@@ -59,6 +59,9 @@ app.include_router(sources_router)
 from routes.ingest import ingest_router
 app.include_router(ingest_router)
 
+from routes.feed import feed_router
+app.include_router(feed_router)
+
 
 @app.get("/")
 def root():
