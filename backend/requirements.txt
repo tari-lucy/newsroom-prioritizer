@@ -7,3 +7,4 @@ feedparser
 pyyaml
 scikit-learn
 joblib
+pika

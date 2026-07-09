@@ -1,5 +1,6 @@
 """Витрина редактора: лента инфоповодов по приоритету и управление источниками."""
 import os
+import time
 
 import requests
 import streamlit as st
@@ -80,6 +81,37 @@ def page_feed():
                 if body:
                     preview = body[:300] + ("…" if len(body) > 300 else "")
                     st.write(preview)
+
+                _rewrite_control(item["id"])
+
+
+def _rewrite_control(item_id: int):
+    """Кнопка рерайта: ставит задачу в очередь и опрашивает статус до готовности."""
+    state_key = f"rewrite_{item_id}"
+
+    if st.button("✍️ Рерайт", key=f"btn_rw_{item_id}"):
+        try:
+            api_post(f"/rewrite/{item_id}")
+            with st.spinner("Готовим рерайт…"):
+                result = None
+                # Рерайт считает воркер асинхронно — опрашиваем статус до готовности.
+                for _ in range(20):
+                    time.sleep(0.5)
+                    result = api_get(f"/rewrite/{item_id}")
+                    if result and result["status"] in ("done", "error"):
+                        break
+            if result and result["status"] == "done":
+                st.session_state[state_key] = result["text"]
+            elif result and result["status"] == "error":
+                st.error("Рерайт не удался.")
+            else:
+                st.warning("Рерайт ещё готовится — откройте позже.")
+        except requests.RequestException as e:
+            st.error(f"Не удалось запросить рерайт: {e}")
+
+    if st.session_state.get(state_key):
+        with st.expander("✍️ Рерайт", expanded=True):
+            st.write(st.session_state[state_key])
 
 
 # --- Страница «Источники» ---

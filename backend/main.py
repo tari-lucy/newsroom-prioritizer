@@ -62,6 +62,9 @@ app.include_router(ingest_router)
 from routes.feed import feed_router
 app.include_router(feed_router)
 
+from routes.rewrite import rewrite_router
+app.include_router(rewrite_router)
+
 
 @app.get("/")
 def root():

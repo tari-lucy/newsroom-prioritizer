@@ -74,6 +74,24 @@ services:
     networks:
       - internal
 
+  # Воркер рерайта: забирает задачи из очереди и генерирует текст вне HTTP-цикла.
+  worker:
+    build: ./backend
+    container_name: newsroom-worker
+    restart: unless-stopped
+    env_file: ./.env
+    command: python -m worker.consumer
+    volumes:
+      - ./backend:/app
+      - ./config:/config:ro
+    depends_on:
+      database:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - internal
+
   # Очередь задач: медленный рерайт (LLM) выносится из HTTP-цикла в воркер.
   rabbitmq:
     image: rabbitmq:3-management
