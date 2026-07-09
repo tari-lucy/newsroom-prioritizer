@@ -21,6 +21,9 @@ class Settings(BaseSettings):
 
     # Приложение
     DEBUG: bool = False
+    SEED_SOURCES: bool = True   # создавать дефолтные ленты при первом старте
+    # Переопределение строки подключения (напр. sqlite для тестов). Пусто -> Postgres из DB_*.
+    DATABASE_URL: str = ""
 
     # Пайплайн: гео-фильтр (регион вынесен в настройки, не в код)
     REGION: str = "sevastopol_crimea"          # ключ активного региона в region.yml
@@ -46,7 +49,9 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        """Строка подключения SQLAlchemy к PostgreSQL."""
+        """Строка подключения SQLAlchemy. DATABASE_URL переопределяет (напр. sqlite в тестах)."""
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
         return (
             f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASS}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"

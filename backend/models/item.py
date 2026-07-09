@@ -1,12 +1,16 @@
 """Инфоповод: единица, которая проходит гео-фильтр, дедуп и скоринг."""
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import JSON, Column, Text
 from sqlmodel import Field, Relationship, SQLModel
 
 from models.source import Source
+
+if TYPE_CHECKING:
+    from models.feedback import Feedback
+    from models.rewrite import Rewrite
 
 
 class ItemStatus(str, Enum):

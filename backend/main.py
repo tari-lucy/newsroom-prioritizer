@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlmodel import Session
 
+from database.config import get_settings
 from database.database import engine, init_db
 # Импорт пакета моделей регистрирует таблицы в метаданных до вызова init_db.
 import models  # noqa: F401
@@ -28,6 +29,8 @@ DEFAULT_SOURCES = [
 
 def seed_sources() -> None:
     """Наполняет БД дефолтными RSS-источниками, если источников ещё нет."""
+    if not get_settings().SEED_SOURCES:
+        return
     with Session(engine) as session:
         if list_sources(session):
             return

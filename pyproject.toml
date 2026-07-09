@@ -1,0 +1,9 @@
+[tool.ruff]
+line-length = 120
+exclude = ["__pycache__", ".venv"]
+
+[tool.ruff.lint.per-file-ignores]
+# main.py: роутеры подключаются после создания app (осознанно)
+"backend/main.py" = ["E402"]
+# conftest.py: переменные окружения выставляются до импортов приложения
+"backend/tests/conftest.py" = ["E402"]
