@@ -74,6 +74,22 @@ services:
     networks:
       - internal
 
+  # Петля переобучения: периодически переобучает приоритизатор на дозревших метках.
+  trainer:
+    build: ./backend
+    container_name: newsroom-trainer
+    restart: unless-stopped
+    env_file: ./.env
+    command: python -m trainer.scheduler
+    volumes:
+      - ./backend:/app
+      - ./config:/config          # сюда пишется обновлённый артефакт модели (read-write)
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - internal
+
   # Воркер рерайта: забирает задачи из очереди и генерирует текст вне HTTP-цикла.
   worker:
     build: ./backend

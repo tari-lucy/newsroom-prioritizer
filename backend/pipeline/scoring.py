@@ -26,21 +26,32 @@ class Scorer:
     def __init__(self):
         self.model = None
         model_path = get_settings().MODEL_PATH
-        # Шаг 7: подключение обученной модели ->
-        #     import joblib; self.model = joblib.load(model_path)
+        # Обученная модель (пайплайн trainer: текст → класс). Нет файла — работает заглушка.
         if os.path.exists(model_path):
-            logger.info("Найден артефакт модели (%s); подключение — на шаге 7", model_path)
+            try:
+                import joblib
+                self.model = joblib.load(model_path)
+                logger.info("Загружена модель приоритизатора: %s", model_path)
+            except Exception as e:
+                logger.warning("Не удалось загрузить модель (%s): работает заглушка", e)
 
     def score(self, title: str, body: str) -> dict:
-        """Возвращает {'proba': float, 'cls': str} — вероятность и класс приоритета."""
+        """Возвращает {'proba': float, 'cls': str} — вероятность «залетит» и класс приоритета."""
+        text = f"{title} {body}".strip()
+
         if self.model is not None:
-            # Шаг 7: реальное предсказание моделью по тексту.
-            raise NotImplementedError
+            proba_vec = self.model.predict_proba([text])[0]
+            classes = list(self.model.classes_)
+            cls = classes[int(proba_vec.argmax())]
+            # P(залетит) = вероятность высокого класса.
+            high = self.CLASSES[2]
+            high_idx = classes.index(high) if high in classes else int(proba_vec.argmax())
+            return {"proba": round(float(proba_vec[high_idx]), 3), "cls": cls}
 
-        text = f"{title} {body}".lower()
-        proba = 0.15 + sum(weight for key, weight in self._BOOSTS.items() if key in text)
+        # Заглушка-эвристика, пока обученной модели нет.
+        text_lower = text.lower()
+        proba = 0.15 + sum(weight for key, weight in self._BOOSTS.items() if key in text_lower)
         proba = min(round(proba, 3), 0.95)
-
         if proba >= 0.5:
             cls = self.CLASSES[2]
         elif proba >= 0.3:
