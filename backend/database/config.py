@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     # Приоритизатор: путь к обученной модели (подключается на шаге 7; пока работает заглушка)
     MODEL_PATH: str = "/config/virality_logreg.joblib"
 
+    # LLM для рерайта — через vsellm (OpenAI-совместимый API).
+    # Модель выбирается переменной LLM_MODEL и меняется без правки кода.
+    # Пустой LLM_API_KEY -> рерайт работает на заглушке (сервис остаётся рабочим).
+    LLM_BASE_URL: str = "https://api.vsellm.ru/v1"
+    LLM_API_KEY: str = ""
+    LLM_MODEL: str = "deepseek/deepseek-v3.2"   # точный id — из каталога vsellm (напр. gpt-4o, claude-sonnet-4.6)
+    LLM_TEMPERATURE: float = 0.3
+
     @property
     def database_url(self) -> str:
         """Строка подключения SQLAlchemy к PostgreSQL."""

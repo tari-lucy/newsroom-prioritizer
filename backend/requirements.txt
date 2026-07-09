@@ -8,3 +8,4 @@ pyyaml
 scikit-learn
 joblib
 pika
+openai
