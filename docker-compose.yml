@@ -1,0 +1,105 @@
+# Инфраструктура сервиса приоритизации инфоповодов.
+# Всё поднимается одной командой: docker compose up --build
+services:
+
+  # REST API: приём инфоповодов, лента, скоринг (in-process), постановка рерайта в очередь.
+  api:
+    build: ./backend
+    container_name: newsroom-api
+    restart: unless-stopped
+    env_file: ./.env
+    volumes:
+      - ./backend:/app          # монтируем код: правки видны без пересборки образа
+    depends_on:
+      database:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    # Healthcheck нужен, чтобы webview/nginx стартовали только после готовности API.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - internal
+
+  # Реверс-прокси: единая точка входа снаружи, проксирует на API.
+  web-proxy:
+    image: nginx:1.27-alpine
+    container_name: newsroom-proxy
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./web-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    networks:
+      - internal
+
+  # Витрина редактора (Streamlit): лента инфоповодов по убыванию вероятности.
+  webview:
+    build: ./ui
+    container_name: newsroom-webview
+    restart: unless-stopped
+    env_file: ./.env
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./ui:/app
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - internal
+
+  # Очередь задач: медленный рерайт (LLM) выносится из HTTP-цикла в воркер.
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: newsroom-rabbitmq
+    restart: always
+    env_file: ./.env
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "15672:15672"           # веб-панель RabbitMQ (диагностика)
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - internal
+
+  # Хранилище: инфоповоды, рерайты, обратная связь редактора.
+  database:
+    image: postgres:15
+    container_name: newsroom-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+volumes:
+  db-data:
+  rabbitmq-data:
+
+networks:
+  internal:
+    driver: bridge

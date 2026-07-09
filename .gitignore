@@ -1,0 +1,25 @@
+# Секреты и локальная конфигурация
+.env
+
+# Служебные файлы окружения разработки
+.claude/
+.venv/
+venv/
+*.venv
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Данные и артефакты (версионируются через DVC, не через git)
+data/*.csv
+data/*.jsonl
+*.log
+
+# ОС/редакторы
+.DS_Store
+.idea/
+.vscode/
