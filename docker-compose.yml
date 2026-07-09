@@ -10,6 +10,7 @@ services:
     env_file: ./.env
     volumes:
       - ./backend:/app          # монтируем код: правки видны без пересборки образа
+      - ./config:/config:ro     # настройки региона и артефакт модели
     depends_on:
       database:
         condition: service_healthy
@@ -50,6 +51,24 @@ services:
     volumes:
       - ./ui:/app
     depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - internal
+
+  # Фоновый сбор: периодически опрашивает источники (сбор → гео → дедуп → скоринг).
+  scheduler:
+    build: ./backend
+    container_name: newsroom-scheduler
+    restart: unless-stopped
+    env_file: ./.env
+    command: python -m pipeline.scheduler
+    volumes:
+      - ./backend:/app
+      - ./config:/config:ro
+    depends_on:
+      database:
+        condition: service_healthy
       api:
         condition: service_healthy
     networks:
