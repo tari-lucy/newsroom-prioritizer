@@ -12,6 +12,7 @@ os.environ["REGION_CONFIG"] = str(CONFIG_PATH)
 os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.NamedTemporaryFile(suffix='.db', delete=False).name}"
 os.environ["SEED_SOURCES"] = "false"
 os.environ["LLM_API_KEY"] = ""
+os.environ["FETCH_FULLTEXT"] = "false"   # тесты не ходят в сеть
 
 import pytest
 from fastapi.testclient import TestClient

@@ -7,6 +7,8 @@ feedparser
 pyyaml
 scikit-learn
 joblib
+cloudscraper
+trafilatura
 pika
 openai
 bcrypt

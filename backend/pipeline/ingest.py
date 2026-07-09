@@ -12,6 +12,7 @@ from database.config import get_settings
 from models.item import Item, ItemStatus
 from pipeline.connectors import get_connector
 from pipeline.dedup import best_match
+from pipeline.fulltext import fetch_fulltext
 from pipeline.geo_filter import check_region
 from pipeline.scoring import get_scorer
 from services.crud.item import create_item, get_item_by_url, save_item
@@ -68,8 +69,14 @@ def run_ingest(session: Session) -> dict:
                 summary["out_of_region"] += 1
                 continue
 
-            # Дедуп по высокому порогу косинуса.
-            text = f"{raw.title} {raw.body}"
+            # Дотягиваем полный текст статьи (RSS даёт только анонс); при неудаче остаётся анонс.
+            if settings.FETCH_FULLTEXT:
+                full_text = fetch_fulltext(raw.url)
+                if full_text:
+                    item.body = full_text
+
+            # Дедуп и скоринг — уже на полном тексте (если он получен).
+            text = f"{raw.title} {item.body}"
             idx, sim = best_match(text, canon_texts)
             if sim >= settings.DEDUP_THRESHOLD:
                 item.status = ItemStatus.DUPLICATE.value
@@ -79,7 +86,7 @@ def run_ingest(session: Session) -> dict:
                 continue
 
             # Новый инфоповод: скорим и показываем редактору.
-            result = scorer.score(raw.title, raw.body)
+            result = scorer.score(raw.title, item.body)
             item.score_proba = result["proba"]
             item.score_class = result["cls"]
             item.status = ItemStatus.SCORED.value
