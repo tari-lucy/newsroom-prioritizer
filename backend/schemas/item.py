@@ -18,3 +18,4 @@ class ItemRead(BaseModel):
     region_relevant: Optional[bool] = None
     matched_terms: list = []
     status: str
+    feedback: Optional[str] = None   # текущая оценка редактора (like/dislike), если есть

@@ -82,7 +82,26 @@ def page_feed():
                     preview = body[:300] + ("…" if len(body) > 300 else "")
                     st.write(preview)
 
+                _feedback_control(item)
                 _rewrite_control(item["id"])
+
+
+def _feedback_control(item):
+    """Кнопки 👍/👎. Текущая оценка приходит вместе с лентой и подсвечивается галочкой."""
+    verdict = item.get("feedback")
+    cols = st.columns([1, 1, 8])
+    if cols[0].button("👍" + (" ✓" if verdict == "like" else ""), key=f"like_{item['id']}"):
+        _send_feedback(item["id"], "like")
+    if cols[1].button("👎" + (" ✓" if verdict == "dislike" else ""), key=f"dislike_{item['id']}"):
+        _send_feedback(item["id"], "dislike")
+
+
+def _send_feedback(item_id: int, verdict: str):
+    try:
+        api_post(f"/feedback/{item_id}", json={"verdict": verdict})
+        st.rerun()
+    except requests.RequestException as e:
+        st.error(f"Не удалось сохранить оценку: {e}")
 
 
 def _rewrite_control(item_id: int):
