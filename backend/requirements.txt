@@ -9,3 +9,6 @@ scikit-learn
 joblib
 pika
 openai
+bcrypt
+python-jose[cryptography]
+python-multipart

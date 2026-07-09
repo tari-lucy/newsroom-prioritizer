@@ -62,6 +62,9 @@ docker compose up --build
 - Healthcheck: http://localhost/health
 - Панель RabbitMQ: http://localhost:15672
 
+Вход в витрину (демо-редактор создаётся автоматически): **логин `editor`, пароль `editor123`**.
+Доступ к API защищён JWT — токен выдаёт `POST /auth/login`.
+
 ## Переменные окружения
 
 Все настройки — в `.env` (шаблон с комментариями: `.env.example`). Ключевые:

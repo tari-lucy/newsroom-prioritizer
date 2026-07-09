@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     # Приложение
     DEBUG: bool = False
     SEED_SOURCES: bool = True   # создавать дефолтные ленты при первом старте
+    SEED_EDITOR: bool = True    # создавать демо-редактора при первом старте
+
+    # Авторизация (JWT)
+    SECRET_KEY: str = "dev-secret-change-me"   # в продакшене задать в .env
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_SECONDS: int = 86400            # срок жизни токена (сутки)
     # Переопределение строки подключения (напр. sqlite для тестов). Пусто -> Postgres из DB_*.
     DATABASE_URL: str = ""
 

@@ -16,29 +16,60 @@ CLASS_BADGE = {
 SOURCE_TYPES = ["rss", "telegram", "vk"]
 
 
-# --- Обёртки над API: единая обработка ошибок сети ---
+# --- Обёртки над API: подстановка токена и единая обработка ошибок сети ---
+
+def _headers():
+    token = st.session_state.get("token")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
 
 def api_get(path: str, **params):
-    resp = requests.get(f"{API_URL}{path}", params=params, timeout=15)
+    resp = requests.get(f"{API_URL}{path}", params=params, headers=_headers(), timeout=15)
     resp.raise_for_status()
     return resp.json()
 
 
 def api_post(path: str, **kwargs):
-    resp = requests.post(f"{API_URL}{path}", timeout=60, **kwargs)
+    resp = requests.post(f"{API_URL}{path}", headers=_headers(), timeout=60, **kwargs)
     resp.raise_for_status()
     return resp.json() if resp.content else None
 
 
 def api_patch(path: str, **params):
-    resp = requests.patch(f"{API_URL}{path}", params=params, timeout=15)
+    resp = requests.patch(f"{API_URL}{path}", params=params, headers=_headers(), timeout=15)
     resp.raise_for_status()
     return resp.json()
 
 
 def api_delete(path: str):
-    resp = requests.delete(f"{API_URL}{path}", timeout=15)
+    resp = requests.delete(f"{API_URL}{path}", headers=_headers(), timeout=15)
     resp.raise_for_status()
+
+
+def do_login(username: str, password: str):
+    """Логин через /auth/login (форма OAuth2) — сохраняет токен в сессии."""
+    resp = requests.post(
+        f"{API_URL}/auth/login",
+        data={"username": username, "password": password},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    st.session_state["token"] = resp.json()["access_token"]
+
+
+def render_login():
+    """Экран входа. Показывается, пока редактор не авторизован."""
+    st.subheader("Вход")
+    with st.form("login"):
+        username = st.text_input("Логин", value="editor")
+        password = st.text_input("Пароль", type="password")
+        if st.form_submit_button("Войти"):
+            try:
+                do_login(username, password)
+                st.rerun()
+            except requests.RequestException:
+                st.error("Неверный логин или пароль.")
+    st.caption("Демо-доступ: editor / editor123")
 
 
 # --- Страница «Лента» ---
@@ -192,10 +223,18 @@ def page_sources():
 st.set_page_config(page_title="Newsroom Prioritizer", page_icon="📰", layout="wide")
 st.title("📰 Newsroom Prioritizer")
 
+# Пока редактор не авторизован — показываем только экран входа.
+if "token" not in st.session_state:
+    render_login()
+    st.stop()
+
 with st.sidebar:
     st.header("Навигация")
     page = st.radio("Раздел", ["Лента", "Источники"], label_visibility="collapsed")
     st.divider()
+    if st.button("🚪 Выйти", use_container_width=True):
+        st.session_state.pop("token", None)
+        st.rerun()
     if st.button("🔄 Запустить сбор", use_container_width=True):
         with st.spinner("Идёт сбор инфоповодов…"):
             try:

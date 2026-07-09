@@ -39,7 +39,11 @@ class FakeConnector:
 @pytest.fixture()
 def client():
     import main
+    from auth.authenticate import authenticate
     from database.database import engine
+
+    # Тесты не проверяют авторизацию — подменяем её фиксированным редактором.
+    main.app.dependency_overrides[authenticate] = lambda: 1
 
     SQLModel.metadata.drop_all(engine)
     SQLModel.metadata.create_all(engine)
