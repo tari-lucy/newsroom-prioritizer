@@ -17,6 +17,7 @@ from models.rewrite import RewriteStatus
 from services.crud.item import get_item
 from services.crud.rewrite import get_rewrite, save_rewrite
 from worker.rewrite_runner import generate_rewrite
+from worker.uniqueness import check_uniqueness
 # Импорт моделей нужен для конфигурации маппера вне процесса API.
 import models  # noqa: F401
 
@@ -49,12 +50,17 @@ def _process_message(body: bytes) -> None:
             if item is None:
                 raise ValueError(f"item_id={item_id} не найден")
 
-            text, uniqueness = generate_rewrite(item.title, item.body)
+            text, _ = generate_rewrite(item.title, item.body)
             rewrite.text = text
-            rewrite.uniqueness = uniqueness
             rewrite.status = RewriteStatus.DONE.value
-            save_rewrite(rewrite, session)
+            save_rewrite(rewrite, session)   # текст готов — редактор уже видит рерайт
             logger.info("Рерайт готов: rewrite_id=%s", rewrite_id)
+
+            # Уникальность (Text.ru) считается дольше — дописываем отдельно, не задерживая текст.
+            uniqueness = check_uniqueness(text)
+            if uniqueness is not None:
+                rewrite.uniqueness = uniqueness
+                save_rewrite(rewrite, session)
         except Exception as e:
             logger.error("Ошибка рерайта rewrite_id=%s: %s", rewrite_id, e)
             rewrite.status = RewriteStatus.ERROR.value

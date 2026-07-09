@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "deepseek/deepseek-v3.2"   # точный id — из каталога vsellm (напр. gpt-4o, claude-sonnet-4.6)
     LLM_TEMPERATURE: float = 0.3
 
+    # Проверка уникальности рерайта через Text.ru (асинхронный API).
+    # Пустой ключ -> проверка пропускается (uniqueness остаётся None).
+    TEXTRU_BASE_URL: str = "https://api.text.ru/post"
+    TEXTRU_API_KEY: str = ""
+    TEXTRU_POLL_ATTEMPTS: int = 20   # сколько раз опрашивать результат
+    TEXTRU_POLL_INTERVAL: int = 6    # интервал опроса, сек
+
     @property
     def database_url(self) -> str:
         """Строка подключения SQLAlchemy. DATABASE_URL переопределяет (напр. sqlite в тестах)."""

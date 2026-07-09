@@ -151,7 +151,7 @@ def _rewrite_control(item_id: int):
                     if result and result["status"] in ("done", "error"):
                         break
             if result and result["status"] == "done":
-                st.session_state[state_key] = result["text"]
+                st.session_state[state_key] = result
             elif result and result["status"] == "error":
                 st.error("Рерайт не удался.")
             else:
@@ -159,9 +159,12 @@ def _rewrite_control(item_id: int):
         except requests.RequestException as e:
             st.error(f"Не удалось запросить рерайт: {e}")
 
-    if st.session_state.get(state_key):
+    stored = st.session_state.get(state_key)
+    if stored:
         with st.expander("✍️ Рерайт", expanded=True):
-            st.write(st.session_state[state_key])
+            st.write(stored.get("text", ""))
+            if stored.get("uniqueness") is not None:
+                st.caption(f"Уникальность: {stored['uniqueness']}%")
 
 
 # --- Страница «Источники» ---

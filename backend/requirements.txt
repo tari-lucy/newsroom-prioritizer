@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
+requests
 sqlmodel
 psycopg2-binary
 pydantic-settings
