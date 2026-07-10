@@ -1,5 +1,5 @@
 outs:
-- md5: 07709c43d45d9e9a5f29db509c8905b3
-  size: 3987140
+- md5: 65581f2e4862c864f78c0d7960d8364d
+  size: 2252362
   hash: md5
   path: virality_model.joblib
