@@ -44,6 +44,22 @@ def test_fetch_views_no_token(monkeypatch):
     assert metrika.fetch_views("2026-01-01", "2026-02-01") == {}
 
 
+def test_fetch_views_survives_network_error(monkeypatch):
+    class _Settings:
+        METRIKA_TOKEN = "t"
+        METRIKA_COUNTER = "1"
+        METRIKA_BASE_URL = "http://m"
+        METRIKA_URL_FILTER = "/news/"
+
+    monkeypatch.setattr(metrika, "get_settings", lambda: _Settings())
+
+    def boom(*a, **k):
+        raise ConnectionError("сеть недоступна")
+
+    monkeypatch.setattr(metrika.requests, "get", boom)
+    assert metrika.fetch_views("2026-01-01", "2026-02-01") == {}
+
+
 def test_relative_labels_top20_is_high():
     # 10 инфоповодов одного месяца; максимальный по просмотрам должен стать «высокая».
     views = [1, 2, 3, 4, 5, 6, 7, 8, 9, 100]

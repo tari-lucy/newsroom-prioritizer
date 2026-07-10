@@ -73,6 +73,10 @@ def build_training_frame(session: Session) -> tuple[list[str], list[str], list[s
         views.append(pageviews)
         months.append(item.published_at.strftime("%Y-%m"))
 
+    if not texts:
+        logger.info("Ни один дозревший инфоповод не сматчился с просмотрами Метрики")
+        return [], [], []
+
     labels = _relative_labels(views, months)
     logger.info("Размечено %d инфоповодов из %d дозревших", len(texts), len(items))
     return texts, labels, months

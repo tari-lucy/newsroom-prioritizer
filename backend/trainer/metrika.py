@@ -25,33 +25,42 @@ def fetch_views(date1: str, date2: str) -> dict[str, int]:
 
     views: dict[str, int] = {}
     offset = 1
-    while True:
-        params = {
-            "ids": settings.METRIKA_COUNTER,
-            "metrics": "ym:pv:pageviews",
-            "dimensions": "ym:pv:URLPathFull",
-            "filters": f"ym:pv:URLPathFull=@'{settings.METRIKA_URL_FILTER}'",
-            "date1": date1,
-            "date2": date2,
-            "accuracy": "full",
-            "limit": _PAGE_LIMIT,
-            "offset": offset,
-        }
-        resp = requests.get(
-            settings.METRIKA_BASE_URL,
-            params=params,
-            headers={"Authorization": f"OAuth {settings.METRIKA_TOKEN}"},
-            timeout=120,
-        )
-        resp.raise_for_status()
-        data = resp.json().get("data", [])
-        for row in data:
-            path = row["dimensions"][0]["name"]
-            views[path] = views.get(path, 0) + int(row["metrics"][0])
-        if len(data) < _PAGE_LIMIT:
-            break
-        offset += _PAGE_LIMIT
-        time.sleep(0.3)
+    try:
+        while True:
+            params = {
+                "ids": settings.METRIKA_COUNTER,
+                "metrics": "ym:pv:pageviews",
+                "dimensions": "ym:pv:URLPathFull",
+                "filters": f"ym:pv:URLPathFull=@'{settings.METRIKA_URL_FILTER}'",
+                "date1": date1,
+                "date2": date2,
+                "accuracy": "full",
+                "limit": _PAGE_LIMIT,
+                "offset": offset,
+            }
+            resp = requests.get(
+                settings.METRIKA_BASE_URL,
+                params=params,
+                headers={"Authorization": f"OAuth {settings.METRIKA_TOKEN}"},
+                timeout=120,
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data", [])
+            for row in data:
+                # Кривую строку пропускаем, а не роняем весь сбор.
+                try:
+                    path = row["dimensions"][0]["name"]
+                    views[path] = views.get(path, 0) + int(row["metrics"][0])
+                except (KeyError, IndexError, ValueError, TypeError):
+                    continue
+            if len(data) < _PAGE_LIMIT:
+                break
+            offset += _PAGE_LIMIT
+            time.sleep(0.3)
+    except Exception as e:
+        # Любая проблема с Метрикой = метки просто не подтягиваются в этот прогон.
+        logger.warning("Метрика недоступна: %s — метки пропускаем", e)
+        return {}
 
     logger.info("Метрика: получено просмотров по %d URL за %s..%s", len(views), date1, date2)
     return views

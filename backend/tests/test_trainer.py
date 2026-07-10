@@ -49,3 +49,22 @@ def test_retrain_skips_without_labels(client):
     from trainer.retrain import run_retrain
     # Метки из Метрики ещё не подключены -> петля честно сообщает «недостаточно данных».
     assert run_retrain()["status"] == "skipped"
+
+
+def test_retrain_survives_labeling_error(client, monkeypatch):
+    import trainer.retrain as retrain
+
+    def boom(session):
+        raise RuntimeError("БД недоступна")
+
+    monkeypatch.setattr(retrain, "build_training_frame", boom)
+    result = retrain.run_retrain()
+    assert result["status"] == "error"
+    assert result["stage"] == "labeling"
+
+
+def test_evaluate_single_class_does_not_crash():
+    pipeline = train_model(*_synthetic(), min_df=1)
+    # holdout из одного класса — PR-AUC не определён, но исключения быть не должно.
+    metrics = evaluate(pipeline, ["атака бпла севастополь взрыв"] * 3, ["высокая"] * 3)
+    assert metrics["pr_auc"] == 0.0
