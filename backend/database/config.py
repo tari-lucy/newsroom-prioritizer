@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     # Приоритизатор: путь к обученной модели. Если файла нет — работает заглушка-эвристика.
     MODEL_PATH: str = "/config/virality_logreg.joblib"
 
+    # Источник меток для переобучения — Яндекс.Метрика (просмотры = метка «залетело»).
+    # Пустой токен -> метки не подтягиваются, петля сообщает «недостаточно данных».
+    METRIKA_BASE_URL: str = "https://api-metrika.yandex.net/stat/v1/data"
+    METRIKA_TOKEN: str = ""
+    METRIKA_COUNTER: str = ""
+    METRIKA_URL_FILTER: str = "/news/"   # какие URL считаем инфоповодами
+
     # Петля переобучения (trainer)
     RETRAIN_INTERVAL_DAYS: int = 30      # период запуска переобучения
     LABEL_MATURATION_DAYS: int = 30      # сколько ждём созревания метки (просмотры набираются)
