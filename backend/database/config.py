@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     INGEST_INTERVAL_MINUTES: int = 30           # период автосбора шедулером
 
     # Приоритизатор: путь к обученной модели. Если файла нет — работает заглушка-эвристика.
-    MODEL_PATH: str = "/config/virality_logreg.joblib"
+    MODEL_PATH: str = "/config/virality_model.joblib"
 
     # Источник меток для переобучения — Яндекс.Метрика (просмотры = метка «залетело»).
     # Пустой токен -> метки не подтягиваются, петля сообщает «недостаточно данных».
