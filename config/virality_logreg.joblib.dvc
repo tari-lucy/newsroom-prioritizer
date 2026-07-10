@@ -1,0 +1,5 @@
+outs:
+- md5: 07709c43d45d9e9a5f29db509c8905b3
+  size: 3987140
+  hash: md5
+  path: virality_logreg.joblib
