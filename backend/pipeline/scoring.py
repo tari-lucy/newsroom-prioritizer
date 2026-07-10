@@ -42,10 +42,17 @@ class Scorer:
         if self.model is not None:
             proba_vec = self.model.predict_proba([text])[0]
             classes = list(self.model.classes_)
-            cls = classes[int(proba_vec.argmax())]
+            pred_idx = int(proba_vec.argmax())
+            if self.CLASSES[2] in classes:
+                # Строковые метки низкая/средняя/высокая.
+                high_idx = classes.index(self.CLASSES[2])
+                cls = str(classes[pred_idx])
+            else:
+                # Ординальные метки (напр. 0/1/2): высокий класс = максимальная метка.
+                ranked = sorted(range(len(classes)), key=lambda i: classes[i])
+                high_idx = ranked[-1]
+                cls = self.CLASSES[min(ranked.index(pred_idx), len(self.CLASSES) - 1)]
             # P(залетит) = вероятность высокого класса.
-            high = self.CLASSES[2]
-            high_idx = classes.index(high) if high in classes else int(proba_vec.argmax())
             return {"proba": round(float(proba_vec[high_idx]), 3), "cls": cls}
 
         # Заглушка-эвристика, пока обученной модели нет.

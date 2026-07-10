@@ -45,6 +45,21 @@ def test_scorer_loads_trained_model(monkeypatch, tmp_path):
     assert 0.0 <= result["proba"] <= 1.0
 
 
+def test_scorer_handles_numeric_labels(monkeypatch, tmp_path):
+    # Модель с ординальными метками 0/1/2 (не строками) должна встать без правок сервиса.
+    texts, _ = _synthetic()
+    numeric_labels = [2, 1, 0] * 10          # тот же порядок: высокая/средняя/низкая
+    model_path = tmp_path / "model.joblib"
+    save_model(train_model(texts, numeric_labels, min_df=1), str(model_path))
+
+    import pipeline.scoring as scoring
+    monkeypatch.setattr(scoring, "get_settings", lambda: type("S", (), {"MODEL_PATH": str(model_path)}))
+
+    result = scoring.Scorer().score("атака бпла севастополь", "взрыв пожар")
+    assert result["cls"] in ("низкая", "средняя", "высокая")
+    assert 0.0 <= result["proba"] <= 1.0
+
+
 def test_retrain_skips_without_labels(client):
     from trainer.retrain import run_retrain
     # Метки из Метрики ещё не подключены -> петля честно сообщает «недостаточно данных».
