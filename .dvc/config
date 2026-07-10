@@ -1,0 +1,4 @@
+[core]
+    remote = storage
+['remote "storage"']
+    url = ssh://tarrri@45.133.234.45/home/tarrri/src/dvc
