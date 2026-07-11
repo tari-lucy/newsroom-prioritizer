@@ -8,12 +8,6 @@ import streamlit as st
 
 API_URL = os.environ.get("API_URL", "http://api:8000")
 
-
-@st.cache_resource
-def get_cookie_manager():
-    """Менеджер cookie — чтобы вход переживал перезагрузку страницы (F5)."""
-    return stx.CookieManager(key="cookies")
-
 # Цветовая индикация класса приоритета.
 CLASS_BADGE = {
     "высокая": "🔴 высокая",
@@ -63,7 +57,7 @@ def do_login(username: str, password: str):
     resp.raise_for_status()
     token = resp.json()["access_token"]
     st.session_state["token"] = token
-    get_cookie_manager().set("token", token)
+    cookie_manager.set("token", token)
 
 
 def render_login():
@@ -236,7 +230,8 @@ def page_sources():
 st.set_page_config(page_title="Newsroom Prioritizer", page_icon="📰", layout="wide")
 st.title("📰 Newsroom Prioritizer")
 
-cookie_manager = get_cookie_manager()
+# Менеджер cookie создаём один раз за прогон (после set_page_config).
+cookie_manager = stx.CookieManager(key="cookies")
 # Восстанавливаем вход из cookie, чтобы сессия переживала перезагрузку страницы (F5).
 if "token" not in st.session_state:
     saved_token = cookie_manager.get("token")
