@@ -1,6 +1,8 @@
 """Витрина редактора: лента инфоповодов по приоритету и управление источниками."""
 import os
 import time
+from collections import Counter
+from datetime import date, datetime, timedelta
 
 import streamlit as st
 # streamlit-cookies-manager использует устаревший st.cache — подменяем на актуальный.
@@ -14,7 +16,20 @@ COOKIE_PASSWORD = os.environ.get("COOKIE_PASSWORD", "newsroom-cookie-key")
 
 # Индикатор потенциала: огонёк = «может зайти», ниже — прохладнее.
 POTENTIAL_ICON = {"высокая": "🔥", "средняя": "🌤️", "низкая": "💤"}
+# Тёплый→холодный акцент по классу (интуитивно: горячее = выше шанс).
+POTENTIAL_COLOR = {"высокая": "#e8590c", "средняя": "#f59f00", "низкая": "#868e96"}
 SOURCE_TYPES = ["rss", "telegram", "vk"]
+
+
+CUSTOM_CSS = """
+<style>
+.block-container { padding-top: 2.5rem; max-width: 1080px; }
+#MainMenu, footer { visibility: hidden; }
+h5 a { text-decoration: none; }
+[data-testid="stMetricValue"] { font-size: 1.5rem; }
+div[data-testid="stExpander"] details { border: none; }
+</style>
+"""
 
 # Основы гео-терминов из region.yml → читаемые названия для карточки.
 REGION_NAMES = {
@@ -95,10 +110,10 @@ def render_login():
 
 def page_feed():
     st.subheader("Лента инфоповодов")
-    st.caption("Свежие сверху, внутри дня — по потенциалу «залететь». Показаны только релевантные региону.")
+    st.caption("Свежие сверху, внутри дня — по потенциалу «залететь». Только релевантные региону.")
 
     try:
-        items = api_get("/feed", limit=100)
+        items = api_get("/feed", limit=300)
     except requests.RequestException as e:
         st.error(f"Не удалось получить ленту: {e}")
         return
@@ -107,43 +122,102 @@ def page_feed():
         st.info("Лента пуста. Нажмите «Запустить сбор» в боковой панели, чтобы собрать инфоповоды.")
         return
 
+    filtered = _feed_filters(items)
+    _feed_counters(filtered)
+    st.divider()
+
+    if not filtered:
+        st.info("Под выбранные фильтры ничего не подошло.")
+        return
+    for item in filtered:
+        _render_card(item)
+
+
+def _within_period(published_at, period):
+    if period == "всё время":
+        return True
+    if not published_at:
+        return False
+    try:
+        published = datetime.fromisoformat(published_at).date()
+    except ValueError:
+        return False
+    threshold = {"сегодня": 0, "3 дня": 2, "неделя": 6}[period]
+    return published >= date.today() - timedelta(days=threshold)
+
+
+def _feed_filters(items):
+    """Панель фильтров сверху; возвращает отфильтрованный список инфоповодов."""
+    c = st.columns([3, 2, 2, 2])
+    query = c[0].text_input("Поиск", placeholder="заголовок или текст")
+    classes = c[1].multiselect("Класс", ["высокая", "средняя", "низкая"], placeholder="любой")
+    sources = sorted({i.get("source_name") for i in items if i.get("source_name")})
+    source = c[2].selectbox("Источник", ["Все источники", *sources])
+    period = c[3].selectbox("Период", ["всё время", "сегодня", "3 дня", "неделя"])
+
+    q = query.strip().lower()
+    result = []
     for item in items:
-        with st.container(border=True):
-            score_col, main_col = st.columns([1, 7])
+        if q and q not in f"{item.get('title', '')} {item.get('body') or ''}".lower():
+            continue
+        if classes and item.get("score_class") not in classes:
+            continue
+        if source != "Все источники" and item.get("source_name") != source:
+            continue
+        if not _within_period(item.get("published_at"), period):
+            continue
+        result.append(item)
+    return result
 
-            with score_col:
-                cls = item.get("score_class") or ""
-                proba = item.get("score_proba")
-                chance = f"{proba:.0%}" if proba is not None else "—"
-                st.markdown(
-                    f"<div style='text-align:center'>"
-                    f"<div style='font-size:2.4rem;line-height:1.1'>{POTENTIAL_ICON.get(cls, '')}</div>"
-                    f"<div style='font-weight:600'>{cls}</div>"
-                    f"<div style='color:gray;font-size:0.85rem'>шанс {chance}</div>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
 
-            with main_col:
-                st.markdown(f"##### [{item['title']}]({item['url']})")
-                meta = " · ".join(p for p in [
-                    item.get("source_name"),
-                    (item.get("published_at") or "")[:10] or None,
-                ] if p)
-                region = region_label(item.get("matched_terms"))
-                caption = meta + (f"  ·  📍 {region}" if region else "")
-                if caption:
-                    st.caption(caption)
+def _feed_counters(items):
+    counts = Counter(i.get("score_class") for i in items)
+    cols = st.columns(4)
+    cols[0].metric("Всего", len(items))
+    cols[1].metric("🔥 Высокие", counts.get("высокая", 0))
+    cols[2].metric("🌤️ Средние", counts.get("средняя", 0))
+    cols[3].metric("💤 Низкие", counts.get("низкая", 0))
 
-                body = item.get("body") or ""
-                if body:
-                    st.write(body[:280] + ("…" if len(body) > 280 else ""))
-                    if len(body) > 280:
-                        with st.expander("📄 Полный текст"):
-                            st.write(body)
 
-                _rewrite_control(item["id"])
-                _feedback_control(item)
+def _render_card(item):
+    cls = item.get("score_class") or ""
+    color = POTENTIAL_COLOR.get(cls, "#868e96")
+    with st.container(border=True):
+        score_col, main_col = st.columns([1, 7])
+
+        with score_col:
+            proba = item.get("score_proba")
+            chance = f"{proba:.0%}" if proba is not None else "—"
+            st.markdown(
+                f"<div style='text-align:center'>"
+                f"<div style='font-size:2.4rem;line-height:1.1'>{POTENTIAL_ICON.get(cls, '')}</div>"
+                f"<div style='display:inline-block;padding:1px 10px;border-radius:12px;"
+                f"background:{color}22;color:{color};font-weight:600;font-size:0.9rem'>{cls}</div>"
+                f"<div style='color:gray;font-size:0.85rem;margin-top:3px'>шанс {chance}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        with main_col:
+            st.markdown(f"##### [{item['title']}]({item['url']})")
+            meta = " · ".join(p for p in [
+                item.get("source_name"),
+                (item.get("published_at") or "")[:10] or None,
+            ] if p)
+            region = region_label(item.get("matched_terms"))
+            caption = meta + (f"  ·  📍 {region}" if region else "")
+            if caption:
+                st.caption(caption)
+
+            body = item.get("body") or ""
+            if body:
+                st.write(body[:280] + ("…" if len(body) > 280 else ""))
+                if len(body) > 280:
+                    with st.expander("📄 Полный текст"):
+                        st.write(body)
+
+            _rewrite_control(item["id"])
+            _feedback_control(item)
 
 
 def _feedback_control(item):
@@ -262,6 +336,7 @@ cookies = EncryptedCookieManager(prefix="newsroom/", password=COOKIE_PASSWORD)
 if not cookies.ready():
     st.stop()
 
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 st.title("📰 Newsroom Prioritizer")
 
 # Восстанавливаем вход из cookie (переживает перезагрузку страницы F5).
