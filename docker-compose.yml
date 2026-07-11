@@ -32,7 +32,8 @@ services:
     container_name: newsroom-proxy
     restart: always
     ports:
-      - "80:80"
+      # Хост-порт задаётся PROXY_PORT (по умолчанию 80); поменять, если 80 занят.
+      - "${PROXY_PORT:-80}:80"
     volumes:
       - ./web-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -47,7 +48,7 @@ services:
     restart: unless-stopped
     env_file: ./.env
     ports:
-      - "8501:8501"
+      - "${WEBVIEW_PORT:-8501}:8501"
     volumes:
       - ./ui:/app
     depends_on:
