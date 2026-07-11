@@ -144,14 +144,28 @@ def page_feed():
     # Пагинация: рисуем ограниченное число карточек за раз — иначе Streamlit подвисает.
     page_size = 20
     total = len(filtered)
-    pages = (total + page_size - 1) // page_size
-    page = 1
-    if pages > 1:
-        page = st.number_input(f"Страница (всего {pages})", min_value=1, max_value=pages, value=1, step=1)
+    pages = max(1, (total + page_size - 1) // page_size)
+    page = min(st.session_state.get("feed_page", 1), pages)
+
     start = (page - 1) * page_size
-    st.caption(f"Показаны {start + 1}–{min(start + page_size, total)} из {total}")
+    st.caption(f"Показаны {start + 1}–{min(start + page_size, total)} из {total}  ·  страница {page} из {pages}")
     for item in filtered[start:start + page_size]:
         _render_card(item)
+
+    # Навигация по страницам — внизу под лентой.
+    if pages > 1:
+        st.divider()
+        nav = st.columns([1, 2, 1])
+        if nav[0].button("← Назад", disabled=page <= 1, use_container_width=True):
+            st.session_state["feed_page"] = page - 1
+            st.rerun()
+        nav[1].markdown(
+            f"<div style='text-align:center;padding-top:6px'>страница {page} из {pages}</div>",
+            unsafe_allow_html=True,
+        )
+        if nav[2].button("Вперёд →", disabled=page >= pages, use_container_width=True):
+            st.session_state["feed_page"] = page + 1
+            st.rerun()
 
 
 def _within_period(published_at, period):
