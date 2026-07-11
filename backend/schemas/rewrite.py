@@ -12,6 +12,17 @@ class RewriteAccepted(BaseModel):
     status: str
 
 
+class TextInput(BaseModel):
+    """Текущий текст статьи для проверок (фактчек, уникальность) на редактируемом варианте."""
+    text: str
+
+
+class RefineRequest(BaseModel):
+    """Доработка текущего текста по указанию редактора."""
+    text: str
+    instruction: str
+
+
 class RewriteRead(BaseModel):
     id: int
     item_id: int

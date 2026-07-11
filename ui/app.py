@@ -315,59 +315,107 @@ def page_item_detail(item):
 
 
 def _detail_rewrite(item):
-    """Рерайт на детальной карточке: сделать / прочитать / обновить, + уникальность и фактчек."""
+    """Верстак рерайта: генерация → ручная правка → доработка ИИ → проверки → копирование."""
     item_id = item["id"]
+    work_key = f"work_{item_id}"
+    st.session_state.setdefault(work_key, "")
 
-    controls = st.columns([2, 2, 5])
-    if controls[0].button("✍️ Сделать рерайт"):
+    def apply_refine(instruction):
+        current = st.session_state.get(work_key, "")
+        if not current.strip():
+            st.warning("Сначала должен быть текст (сгенерируйте или впишите).")
+            return
+        with st.spinner("Дорабатываю…"):
+            try:
+                res = api_post(f"/rewrite/{item_id}/refine", json={"text": current, "instruction": instruction})
+                st.session_state[work_key] = (res or {}).get("text", current)
+                st.rerun()
+            except requests.RequestException as e:
+                st.error(f"Не удалось доработать: {e}")
+
+    # 1. Сгенерировать рерайт (очередь) и подтянуть результат.
+    gen = st.columns([2, 2, 4])
+    if gen[0].button("✍️ Сгенерировать"):
         try:
             api_post(f"/rewrite/{item_id}")
             st.toast("Рерайт поставлен в очередь…")
         except requests.RequestException as e:
             st.error(f"Не удалось запросить рерайт: {e}")
-    if controls[1].button("🔄 Обновить"):
-        st.rerun()
+    if gen[1].button("⬇️ Загрузить результат"):
+        try:
+            rewrite = api_get(f"/rewrite/{item_id}")
+        except requests.RequestException as e:
+            st.error(f"Не удалось получить рерайт: {e}")
+            rewrite = None
+        if not rewrite:
+            st.info("Готового рерайта нет — нажмите «Сгенерировать».")
+        elif rewrite.get("status") in ("pending", "processing"):
+            st.warning("Рерайт ещё готовится… нажмите через пару секунд.")
+        elif rewrite.get("status") == "error":
+            st.error("Рерайт не удался.")
+        elif rewrite.get("text"):
+            st.session_state[work_key] = rewrite["text"]
+            st.rerun()
 
-    try:
-        rewrite = api_get(f"/rewrite/{item_id}")
-    except requests.RequestException as e:
-        st.error(f"Не удалось получить рерайт: {e}")
-        return
+    # 2. Редактируемый текст — правь вручную.
+    edited = st.text_area("Текст статьи (правь вручную)", value=st.session_state[work_key], height=320)
+    st.session_state[work_key] = edited
 
-    if not rewrite:
-        st.info("Рерайта пока нет — нажмите «Сделать рерайт».")
-        return
+    # 3. Доработка ИИ по указанию редактора.
+    st.markdown("**Доработать с ИИ:**")
+    instruction = st.text_input(
+        "Что поправить",
+        placeholder="напр. сократи; перефразируй для уникальности; исправь: губернатор Развожаев",
+    )
+    ai = st.columns([2, 2, 2, 3])
+    if ai[0].button("🔁 Улучшить"):
+        if instruction.strip():
+            apply_refine(instruction)
+        else:
+            st.warning("Впишите, что поправить.")
+    if ai[1].button("✂️ Короче"):
+        apply_refine("Сократи текст, убери лишнее, сохрани факты, цитаты и суть.")
+    if ai[2].button("♻️ Уникальнее"):
+        apply_refine("Повысь уникальность: перефразируй сильнее, переструктурируй, варьируй длину предложений; сохрани все факты и цитаты.")
 
-    status = rewrite.get("status")
-    if status in ("pending", "processing"):
-        st.warning("Рерайт готовится… нажмите «🔄 Обновить» через пару секунд.")
-        return
-    if status == "error":
-        st.error("Рерайт не удался.")
-        return
+    st.divider()
 
-    st.markdown("**Переписанный текст:**")
-    st.write(format_paragraphs(rewrite.get("text")))
-
-    uniqueness = rewrite.get("uniqueness")
-    if uniqueness is not None:
-        st.caption(f"Уникальность (Text.ru): {uniqueness}%")
-    else:
-        st.caption("Уникальность: не проверялась (нет ключа Text.ru или проверка ещё идёт).")
-
-    if st.button("🔍 Проверить факты"):
-        with st.spinner("Сверяю факты с первоисточником…"):
+    # 4. Проверки — на ТЕКУЩЕМ (отредактированном) тексте.
+    checks = st.columns(2)
+    if checks[0].button("🔍 Проверить факты"):
+        with st.spinner("Сверяю с первоисточником…"):
             try:
-                result = api_post(f"/rewrite/{item_id}/factcheck")
-                st.session_state[f"fc_{item_id}"] = (result or {}).get("factcheck") or \
-                    "Фактчек недоступен без ключа LLM."
+                res = api_post(f"/rewrite/{item_id}/factcheck", json={"text": edited})
+                st.session_state[f"fc_{item_id}"] = (res or {}).get("factcheck") or "Фактчек недоступен без ключа LLM."
             except requests.RequestException as e:
                 st.error(f"Фактчек не удался: {e}")
+    if checks[1].button("📊 Проверить уникальность (до минуты)"):
+        with st.spinner("Проверяю уникальность в Text.ru…"):
+            try:
+                res = api_post(f"/rewrite/{item_id}/uniqueness", json={"text": edited})
+                value = (res or {}).get("uniqueness")
+                st.session_state[f"uq_{item_id}"] = (
+                    f"{value}%" if value is not None
+                    else "не проверить (нет ключа Text.ru, текст короткий или не успела)"
+                )
+            except requests.RequestException as e:
+                st.error(f"Проверка уникальности не удалась: {e}")
 
     factcheck = st.session_state.get(f"fc_{item_id}")
     if factcheck:
         st.markdown("**Проверка фактов:**")
         st.info(factcheck)
+        if st.button("🛠 Исправить по фактчеку"):
+            apply_refine(f"Исправь фактические расхождения по замечаниям фактчекера: {factcheck}. Остальное сохрани.")
+    uniqueness = st.session_state.get(f"uq_{item_id}")
+    if uniqueness:
+        st.caption(f"Уникальность: {uniqueness}")
+
+    # 5. Готовый текст для публикации — с кнопкой копирования (появляется при наведении).
+    if edited.strip():
+        st.divider()
+        st.markdown("**Готовый текст для публикации:**")
+        st.code(edited, language=None)
 
 
 # --- Страница «Источники» ---

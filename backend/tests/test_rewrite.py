@@ -25,14 +25,36 @@ def test_generate_rewrite_stub():
     assert uniqueness is None
 
 
-def test_factcheck_requires_rewrite(ingested):
+def test_factcheck_on_text(ingested):
     item_id = ingested.get("/feed").json()[0]["id"]
-    # Рерайта ещё нет — фактчек невозможен.
-    assert ingested.post(f"/rewrite/{item_id}/factcheck").status_code == 400
+    # Фактчек по переданному тексту: без ключа LLM возвращает None, но не падает.
+    resp = ingested.post(f"/rewrite/{item_id}/factcheck", json={"text": "Переписанный текст статьи."})
+    assert resp.status_code == 200
+    assert resp.json()["factcheck"] is None
+
+
+def test_factcheck_empty_text(ingested):
+    item_id = ingested.get("/feed").json()[0]["id"]
+    assert ingested.post(f"/rewrite/{item_id}/factcheck", json={"text": "   "}).status_code == 400
 
 
 def test_factcheck_missing_item(client):
-    assert client.post("/rewrite/999/factcheck").status_code == 404
+    assert client.post("/rewrite/999/factcheck", json={"text": "текст"}).status_code == 404
+
+
+def test_refine_without_key_returns_text(ingested):
+    item_id = ingested.get("/feed").json()[0]["id"]
+    # Без ключа LLM доработка возвращает текст как есть (не падает).
+    resp = ingested.post(f"/rewrite/{item_id}/refine", json={"text": "Текущий текст", "instruction": "сократи"})
+    assert resp.status_code == 200
+    assert resp.json()["text"] == "Текущий текст"
+
+
+def test_uniqueness_short_text_endpoint(ingested):
+    item_id = ingested.get("/feed").json()[0]["id"]
+    resp = ingested.post(f"/rewrite/{item_id}/uniqueness", json={"text": "коротко"})
+    assert resp.status_code == 200
+    assert resp.json()["uniqueness"] is None
 
 
 def test_check_facts_no_key():

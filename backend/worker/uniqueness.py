@@ -19,14 +19,19 @@ MIN_CHARS = 100
 NOT_READY_CODE = "181"
 
 
-def check_uniqueness(text: str) -> Optional[float]:
-    """Возвращает процент уникальности (0–100) или None, если проверка недоступна/не удалась."""
+def check_uniqueness(text: str, attempts: Optional[int] = None, interval: Optional[int] = None) -> Optional[float]:
+    """Возвращает процент уникальности (0–100) или None, если проверка недоступна/не удалась.
+
+    attempts/interval переопределяют опрос (для интерактивной проверки — короче, чем в воркере).
+    """
     settings = get_settings()
     if not settings.TEXTRU_API_KEY:
         return None
     if len(text) < MIN_CHARS:
         logger.info("Текст короче %d символов — уникальность не проверяем", MIN_CHARS)
         return None
+    attempts = attempts or settings.TEXTRU_POLL_ATTEMPTS
+    interval = interval or settings.TEXTRU_POLL_INTERVAL
 
     try:
         # Шаг 1: отправляем текст на проверку, получаем идентификатор.
@@ -42,8 +47,8 @@ def check_uniqueness(text: str) -> Optional[float]:
             return None
 
         # Шаг 2: опрашиваем результат, пока проверка не завершится.
-        for _ in range(settings.TEXTRU_POLL_ATTEMPTS):
-            time.sleep(settings.TEXTRU_POLL_INTERVAL)
+        for _ in range(attempts):
+            time.sleep(interval)
             poll = requests.post(
                 settings.TEXTRU_BASE_URL,
                 data={"uid": uid, "userkey": settings.TEXTRU_API_KEY},

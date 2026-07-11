@@ -8,10 +8,12 @@ from sqlmodel import Session
 from database.database import get_session
 from models.rewrite import Rewrite, RewriteStatus
 from queue_client.publisher import publish_rewrite_task
-from schemas.rewrite import RewriteAccepted, RewriteRead
+from schemas.rewrite import RefineRequest, RewriteAccepted, RewriteRead, TextInput
 from services.crud.item import get_item
 from services.crud.rewrite import create_rewrite, get_latest_rewrite_for_item, save_rewrite
 from worker.factcheck import check_facts
+from worker.rewrite_runner import refine_rewrite
+from worker.uniqueness import check_uniqueness
 
 rewrite_router = APIRouter(prefix="/rewrite", tags=["Рерайт"])
 
@@ -40,12 +42,28 @@ def get_rewrite_status(item_id: int, session: Session = Depends(get_session)):
 
 
 @rewrite_router.post("/{item_id}/factcheck")
-def factcheck(item_id: int, session: Session = Depends(get_session)):
-    """Сверить последний рерайт с первоисточником (LLM). Синхронно — редактор жмёт по требованию."""
+def factcheck(item_id: int, data: TextInput, session: Session = Depends(get_session)):
+    """Сверить переданный (текущий редактируемый) текст с первоисточником через LLM."""
     item = get_item(item_id, session)
     if item is None:
         raise HTTPException(status_code=404, detail="Инфоповод не найден")
-    rewrite = get_latest_rewrite_for_item(item_id, session)
-    if rewrite is None or not rewrite.text:
-        raise HTTPException(status_code=400, detail="Сначала сделайте рерайт")
-    return {"factcheck": check_facts(item.title, item.body, rewrite.text)}
+    if not data.text.strip():
+        raise HTTPException(status_code=400, detail="Пустой текст")
+    return {"factcheck": check_facts(item.title, item.body, data.text)}
+
+
+@rewrite_router.post("/{item_id}/uniqueness")
+def uniqueness(item_id: int, data: TextInput, session: Session = Depends(get_session)):
+    """Проверить уникальность переданного текста через Text.ru (короткий опрос для интерактива)."""
+    if get_item(item_id, session) is None:
+        raise HTTPException(status_code=404, detail="Инфоповод не найден")
+    return {"uniqueness": check_uniqueness(data.text, attempts=8, interval=5)}
+
+
+@rewrite_router.post("/{item_id}/refine")
+def refine(item_id: int, data: RefineRequest, session: Session = Depends(get_session)):
+    """Доработать текущий текст по указанию редактора (LLM). Синхронно — редактор итеративно правит."""
+    item = get_item(item_id, session)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Инфоповод не найден")
+    return {"text": refine_rewrite(item.title, item.body, data.text, data.instruction)}
