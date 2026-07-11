@@ -1,6 +1,5 @@
 """Витрина редактора: лента инфоповодов по приоритету и управление источниками."""
 import os
-import time
 from collections import Counter
 from datetime import date, datetime, timedelta
 
@@ -30,6 +29,12 @@ def potential(proba):
             if proba >= threshold:
                 return name
     return "низкая"
+
+
+def format_paragraphs(text):
+    """Разбивает текст на читаемые абзацы (одиночные переносы строк → отдельные абзацы)."""
+    parts = [p.strip() for p in (text or "").replace("\r", "").split("\n") if p.strip()]
+    return "\n\n".join(parts)
 
 
 CUSTOM_CSS = """
@@ -247,12 +252,11 @@ def _render_card(item):
             body = item.get("body") or ""
             if body:
                 st.write(body[:280] + ("…" if len(body) > 280 else ""))
-                if len(body) > 280:
-                    with st.expander("📄 Полный текст"):
-                        st.write(body)
 
-            _rewrite_control(item["id"])
             _feedback_control(item)
+            if st.button("📄 Открыть карточку", key=f"open_{item['id']}", use_container_width=True):
+                st.session_state["open_item"] = item
+                st.rerun()
 
 
 def _feedback_control(item):
@@ -276,36 +280,94 @@ def _send_feedback(item_id: int, verdict: str):
         st.error(f"Не удалось сохранить оценку: {e}")
 
 
-def _rewrite_control(item_id: int):
-    """Кнопка рерайта: ставит задачу в очередь и опрашивает статус до готовности."""
-    state_key = f"rewrite_{item_id}"
+# --- Детальная карточка инфоповода ---
 
-    if st.button("✍️ Рерайт", key=f"btn_rw_{item_id}"):
+def page_item_detail(item):
+    if st.button("← Назад к ленте"):
+        st.session_state.pop("open_item", None)
+        st.rerun()
+
+    cls = potential(item.get("score_proba"))
+    proba = item.get("score_proba")
+    chance = f"{proba:.0%}" if proba is not None else "—"
+
+    st.markdown(f"### {item['title']}")
+    meta = " · ".join(p for p in [
+        item.get("source_name"),
+        (item.get("published_at") or "")[:10] or None,
+    ] if p)
+    region = region_label(item.get("matched_terms"))
+    st.caption(meta + (f"  ·  📍 {region}" if region else ""))
+    st.markdown(
+        f"{POTENTIAL_ICON.get(cls, '')} **{cls}** · шанс {chance}  ·  [первоисточник]({item['url']})"
+    )
+    st.divider()
+
+    st.subheader("Текст инфоповода")
+    st.write(format_paragraphs(item.get("body")) or "—")
+    st.divider()
+
+    st.subheader("Рерайт под стиль редакции")
+    _detail_rewrite(item)
+    st.divider()
+
+    _feedback_control(item)
+
+
+def _detail_rewrite(item):
+    """Рерайт на детальной карточке: сделать / прочитать / обновить, + уникальность и фактчек."""
+    item_id = item["id"]
+
+    controls = st.columns([2, 2, 5])
+    if controls[0].button("✍️ Сделать рерайт"):
         try:
             api_post(f"/rewrite/{item_id}")
-            with st.spinner("Готовим рерайт…"):
-                result = None
-                # Рерайт считает воркер асинхронно — опрашиваем статус до готовности.
-                for _ in range(20):
-                    time.sleep(0.5)
-                    result = api_get(f"/rewrite/{item_id}")
-                    if result and result["status"] in ("done", "error"):
-                        break
-            if result and result["status"] == "done":
-                st.session_state[state_key] = result
-            elif result and result["status"] == "error":
-                st.error("Рерайт не удался.")
-            else:
-                st.warning("Рерайт ещё готовится — откройте позже.")
+            st.toast("Рерайт поставлен в очередь…")
         except requests.RequestException as e:
             st.error(f"Не удалось запросить рерайт: {e}")
+    if controls[1].button("🔄 Обновить"):
+        st.rerun()
 
-    stored = st.session_state.get(state_key)
-    if stored:
-        with st.expander("✍️ Рерайт", expanded=True):
-            st.write(stored.get("text", ""))
-            if stored.get("uniqueness") is not None:
-                st.caption(f"Уникальность: {stored['uniqueness']}%")
+    try:
+        rewrite = api_get(f"/rewrite/{item_id}")
+    except requests.RequestException as e:
+        st.error(f"Не удалось получить рерайт: {e}")
+        return
+
+    if not rewrite:
+        st.info("Рерайта пока нет — нажмите «Сделать рерайт».")
+        return
+
+    status = rewrite.get("status")
+    if status in ("pending", "processing"):
+        st.warning("Рерайт готовится… нажмите «🔄 Обновить» через пару секунд.")
+        return
+    if status == "error":
+        st.error("Рерайт не удался.")
+        return
+
+    st.markdown("**Переписанный текст:**")
+    st.write(format_paragraphs(rewrite.get("text")))
+
+    uniqueness = rewrite.get("uniqueness")
+    if uniqueness is not None:
+        st.caption(f"Уникальность (Text.ru): {uniqueness}%")
+    else:
+        st.caption("Уникальность: не проверялась (нет ключа Text.ru или проверка ещё идёт).")
+
+    if st.button("🔍 Проверить факты"):
+        with st.spinner("Сверяю факты с первоисточником…"):
+            try:
+                result = api_post(f"/rewrite/{item_id}/factcheck")
+                st.session_state[f"fc_{item_id}"] = (result or {}).get("factcheck") or \
+                    "Фактчек недоступен без ключа LLM."
+            except requests.RequestException as e:
+                st.error(f"Фактчек не удался: {e}")
+
+    factcheck = st.session_state.get(f"fc_{item_id}")
+    if factcheck:
+        st.markdown("**Проверка фактов:**")
+        st.info(factcheck)
 
 
 # --- Страница «Источники» ---
@@ -392,7 +454,11 @@ if not st.session_state.get("token"):
 
 with st.sidebar:
     st.header("Навигация")
-    page = st.radio("Раздел", ["Лента", "Источники"], label_visibility="collapsed")
+    # Смена раздела закрывает открытую детальную карточку.
+    page = st.radio(
+        "Раздел", ["Лента", "Источники"], label_visibility="collapsed",
+        on_change=lambda: st.session_state.pop("open_item", None),
+    )
     st.divider()
     if st.button("🚪 Выйти", use_container_width=True):
         st.session_state.pop("token", None)
@@ -410,7 +476,9 @@ with st.sidebar:
             except requests.RequestException as e:
                 st.error(f"Сбор не удался: {e}")
 
-if page == "Лента":
+if st.session_state.get("open_item") is not None:
+    page_item_detail(st.session_state["open_item"])
+elif page == "Лента":
     page_feed()
 else:
     page_sources()

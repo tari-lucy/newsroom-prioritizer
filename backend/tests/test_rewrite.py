@@ -23,3 +23,19 @@ def test_generate_rewrite_stub():
     text, uniqueness = generate_rewrite("Пожар в Ялте", "В Ялте загорелся склад")
     assert "Пожар в Ялте" in text
     assert uniqueness is None
+
+
+def test_factcheck_requires_rewrite(ingested):
+    item_id = ingested.get("/feed").json()[0]["id"]
+    # Рерайта ещё нет — фактчек невозможен.
+    assert ingested.post(f"/rewrite/{item_id}/factcheck").status_code == 400
+
+
+def test_factcheck_missing_item(client):
+    assert client.post("/rewrite/999/factcheck").status_code == 404
+
+
+def test_check_facts_no_key():
+    from worker.factcheck import check_facts
+    # Без ключа LLM фактчек недоступен -> None (сервис не падает).
+    assert check_facts("Заголовок", "Исходный текст", "Переписанный текст") is None
