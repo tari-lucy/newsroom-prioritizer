@@ -174,6 +174,17 @@ def page_feed():
             st.rerun()
 
 
+def fmt_datetime(value):
+    """ISO-время публикации → «ДД.ММ.ГГГГ ЧЧ:ММ»; если источник дал только дату — без времени."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return value[:10]
+    return dt.strftime("%d.%m.%Y" if len(value) <= 10 else "%d.%m.%Y %H:%M")
+
+
 def _within_period(published_at, period):
     if period == "всё время":
         return True
@@ -243,7 +254,7 @@ def _render_card(item):
             st.markdown(f"##### [{item['title']}]({item['url']})")
             meta = " · ".join(p for p in [
                 item.get("source_name"),
-                (item.get("published_at") or "")[:10] or None,
+                fmt_datetime(item.get("published_at")),
             ] if p)
             region = region_label(item.get("matched_terms"))
             caption = meta + (f"  ·  📍 {region}" if region else "")
