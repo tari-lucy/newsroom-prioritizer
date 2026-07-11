@@ -2,10 +2,17 @@
 import os
 import time
 
+import extra_streamlit_components as stx
 import requests
 import streamlit as st
 
 API_URL = os.environ.get("API_URL", "http://api:8000")
+
+
+@st.cache_resource
+def get_cookie_manager():
+    """Менеджер cookie — чтобы вход переживал перезагрузку страницы (F5)."""
+    return stx.CookieManager(key="cookies")
 
 # Цветовая индикация класса приоритета.
 CLASS_BADGE = {
@@ -47,29 +54,32 @@ def api_delete(path: str):
 
 
 def do_login(username: str, password: str):
-    """Логин через /auth/login (форма OAuth2) — сохраняет токен в сессии."""
+    """Логин через /auth/login (форма OAuth2). Токен — в сессию и в cookie (переживает F5)."""
     resp = requests.post(
         f"{API_URL}/auth/login",
         data={"username": username, "password": password},
         timeout=15,
     )
     resp.raise_for_status()
-    st.session_state["token"] = resp.json()["access_token"]
+    token = resp.json()["access_token"]
+    st.session_state["token"] = token
+    get_cookie_manager().set("token", token)
 
 
 def render_login():
     """Экран входа. Показывается, пока редактор не авторизован."""
     st.subheader("Вход")
+    st.info("👤 **Демо-доступ для проверки:** логин **`editor`**, пароль **`editor123`**")
     with st.form("login"):
         username = st.text_input("Логин", value="editor")
         password = st.text_input("Пароль", type="password")
         if st.form_submit_button("Войти"):
             try:
                 do_login(username, password)
+                time.sleep(0.3)   # дать cookie записаться до перезагрузки
                 st.rerun()
             except requests.RequestException:
                 st.error("Неверный логин или пароль.")
-    st.caption("Демо-доступ: editor / editor123")
 
 
 # --- Страница «Лента» ---
@@ -226,6 +236,13 @@ def page_sources():
 st.set_page_config(page_title="Newsroom Prioritizer", page_icon="📰", layout="wide")
 st.title("📰 Newsroom Prioritizer")
 
+cookie_manager = get_cookie_manager()
+# Восстанавливаем вход из cookie, чтобы сессия переживала перезагрузку страницы (F5).
+if "token" not in st.session_state:
+    saved_token = cookie_manager.get("token")
+    if saved_token:
+        st.session_state["token"] = saved_token
+
 # Пока редактор не авторизован — показываем только экран входа.
 if "token" not in st.session_state:
     render_login()
@@ -237,6 +254,7 @@ with st.sidebar:
     st.divider()
     if st.button("🚪 Выйти", use_container_width=True):
         st.session_state.pop("token", None)
+        cookie_manager.delete("token")
         st.rerun()
     if st.button("🔄 Запустить сбор", use_container_width=True):
         with st.spinner("Идёт сбор инфоповодов…"):
