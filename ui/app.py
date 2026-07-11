@@ -461,11 +461,11 @@ def page_sources():
         col_type, col_name = st.columns([1, 2])
         src_type = col_type.selectbox("Тип", SOURCE_TYPES, index=0)
         src_name = col_name.text_input("Название")
-        src_url = st.text_input("URL ленты (для rss)")
+        src_url = st.text_input("URL ленты (rss) или адрес/имя паблика (vk)", placeholder="https://site.ru/rss  или  vk.com/public_name")
         submitted = st.form_submit_button("Добавить")
         if submitted:
             if not src_name or not src_url:
-                st.warning("Заполните название и URL.")
+                st.warning("Заполните название и адрес.")
             else:
                 try:
                     api_post("/sources", json={
