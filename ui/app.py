@@ -1,5 +1,6 @@
 """Витрина редактора: лента инфоповодов по приоритету и управление источниками."""
 import os
+import time
 from collections import Counter
 from datetime import date, datetime, timedelta
 
@@ -333,29 +334,43 @@ def _detail_rewrite(item):
             except requests.RequestException as e:
                 st.error(f"Не удалось доработать: {e}")
 
-    # 1. Сгенерировать рерайт (очередь) и подтянуть результат.
+    # 1. Одна кнопка: ставит задачу в очередь, ждёт и сама загружает результат в поле.
     gen = st.columns([2, 2, 4])
-    if gen[0].button("✍️ Сгенерировать"):
+    if gen[0].button("✍️ Сгенерировать рерайт"):
         try:
             api_post(f"/rewrite/{item_id}")
-            st.toast("Рерайт поставлен в очередь…")
+            loaded = False
+            with st.spinner("Готовим рерайт…"):
+                for _ in range(12):
+                    time.sleep(1)
+                    rewrite = api_get(f"/rewrite/{item_id}")
+                    if rewrite and rewrite.get("status") == "done" and rewrite.get("text"):
+                        st.session_state[work_key] = rewrite["text"]
+                        loaded = True
+                        break
+                    if rewrite and rewrite.get("status") == "error":
+                        break
+            if loaded:
+                st.rerun()
+            else:
+                st.warning("Рерайт ещё готовится — нажмите «🔄 Обновить» через пару секунд.")
         except requests.RequestException as e:
             st.error(f"Не удалось запросить рерайт: {e}")
-    if gen[1].button("⬇️ Загрузить результат"):
+    if gen[1].button("🔄 Обновить"):
         try:
             rewrite = api_get(f"/rewrite/{item_id}")
         except requests.RequestException as e:
             st.error(f"Не удалось получить рерайт: {e}")
             rewrite = None
-        if not rewrite:
-            st.info("Готового рерайта нет — нажмите «Сгенерировать».")
-        elif rewrite.get("status") in ("pending", "processing"):
-            st.warning("Рерайт ещё готовится… нажмите через пару секунд.")
-        elif rewrite.get("status") == "error":
-            st.error("Рерайт не удался.")
-        elif rewrite.get("text"):
+        if rewrite and rewrite.get("status") == "done" and rewrite.get("text"):
             st.session_state[work_key] = rewrite["text"]
             st.rerun()
+        elif rewrite and rewrite.get("status") in ("pending", "processing"):
+            st.warning("Рерайт ещё готовится…")
+        elif rewrite and rewrite.get("status") == "error":
+            st.error("Рерайт не удался.")
+        else:
+            st.info("Готового рерайта нет — нажмите «Сгенерировать рерайт».")
 
     # 2. Редактируемый текст — правь вручную.
     edited = st.text_area("Текст статьи (правь вручную)", value=st.session_state[work_key], height=320)
