@@ -60,6 +60,22 @@ def test_scorer_handles_numeric_labels(monkeypatch, tmp_path):
     assert 0.0 <= result["proba"] <= 1.0
 
 
+def test_scorer_unwraps_dict_artifact(monkeypatch, tmp_path):
+    # Модель, сохранённая словарём {'model': pipe, ...}, должна корректно распаковаться.
+    import joblib
+    pipe = train_model(*_synthetic(), min_df=1)
+    model_path = tmp_path / "model.joblib"
+    joblib.dump({"model": pipe, "meta": {"version": 1}}, str(model_path))
+
+    import pipeline.scoring as scoring
+    monkeypatch.setattr(scoring, "get_settings", lambda: type("S", (), {"MODEL_PATH": str(model_path)}))
+
+    scorer = scoring.Scorer()
+    assert scorer.model is not None
+    result = scorer.score("атака бпла севастополь", "взрыв")
+    assert result["cls"] in ("низкая", "средняя", "высокая")
+
+
 def test_retrain_skips_without_labels(client):
     from trainer.retrain import run_retrain
     # Метки из Метрики ещё не подключены -> петля честно сообщает «недостаточно данных».
