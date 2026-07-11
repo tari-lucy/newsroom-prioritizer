@@ -33,6 +33,7 @@ class VkConnector(Connector):
             resp = requests.get(VK_API_URL, params={
                 "domain": domain,
                 "count": settings.VK_POST_COUNT,
+                "filter": "owner",   # только записи самого паблика/пользователя, без чужих постов на стене
                 "access_token": settings.VK_TOKEN,
                 "v": settings.VK_API_VERSION,
             }, timeout=30)
