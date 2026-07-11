@@ -13,7 +13,7 @@ from services.crud.item import get_item
 from services.crud.rewrite import create_rewrite, get_latest_rewrite_for_item, save_rewrite
 from worker.factcheck import check_facts
 from worker.rewrite_runner import refine_rewrite
-from worker.uniqueness import check_uniqueness
+from worker.uniqueness import poll_uniqueness, submit_uniqueness
 
 rewrite_router = APIRouter(prefix="/rewrite", tags=["Рерайт"])
 
@@ -53,11 +53,17 @@ def factcheck(item_id: int, data: TextInput, session: Session = Depends(get_sess
 
 
 @rewrite_router.post("/{item_id}/uniqueness")
-def uniqueness(item_id: int, data: TextInput, session: Session = Depends(get_session)):
-    """Проверить уникальность переданного текста через Text.ru (короткий опрос для интерактива)."""
+def uniqueness_submit(item_id: int, data: TextInput, session: Session = Depends(get_session)):
+    """Отправить текст на проверку уникальности (асинхронно). Возвращает uid для опроса."""
     if get_item(item_id, session) is None:
         raise HTTPException(status_code=404, detail="Инфоповод не найден")
-    return {"uniqueness": check_uniqueness(data.text, attempts=8, interval=5)}
+    return {"uid": submit_uniqueness(data.text)}
+
+
+@rewrite_router.get("/{item_id}/uniqueness/{uid}")
+def uniqueness_poll(item_id: int, uid: str):
+    """Опросить готовность проверки уникальности по uid: {ready, uniqueness}."""
+    return poll_uniqueness(uid)
 
 
 @rewrite_router.post("/{item_id}/refine")

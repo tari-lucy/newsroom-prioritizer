@@ -50,11 +50,20 @@ def test_refine_without_key_returns_text(ingested):
     assert resp.json()["text"] == "Текущий текст"
 
 
-def test_uniqueness_short_text_endpoint(ingested):
+def test_uniqueness_submit_without_key(ingested):
     item_id = ingested.get("/feed").json()[0]["id"]
-    resp = ingested.post(f"/rewrite/{item_id}/uniqueness", json={"text": "коротко"})
+    # Без ключа Text.ru отправка возвращает uid=None (сервис не падает).
+    resp = ingested.post(f"/rewrite/{item_id}/uniqueness", json={"text": "x" * 200})
     assert resp.status_code == 200
-    assert resp.json()["uniqueness"] is None
+    assert resp.json()["uid"] is None
+
+
+def test_uniqueness_poll_without_key(ingested):
+    item_id = ingested.get("/feed").json()[0]["id"]
+    resp = ingested.get(f"/rewrite/{item_id}/uniqueness/SOME-UID")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ready"] is True and body["uniqueness"] is None
 
 
 def test_check_facts_no_key():

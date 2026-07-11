@@ -404,17 +404,19 @@ def _detail_rewrite(item):
                 st.session_state[f"fc_{item_id}"] = (res or {}).get("factcheck") or "Фактчек недоступен без ключа LLM."
             except requests.RequestException as e:
                 st.error(f"Фактчек не удался: {e}")
-    if checks[1].button("📊 Проверить уникальность (до минуты)"):
-        with st.spinner("Проверяю уникальность в Text.ru…"):
+    if checks[1].button("📊 Проверить уникальность"):
+        with st.spinner("Отправляю текст в Text.ru…"):
             try:
-                res = api_post(f"/rewrite/{item_id}/uniqueness", json={"text": edited}, timeout=90)
-                value = (res or {}).get("uniqueness")
-                st.session_state[f"uq_{item_id}"] = (
-                    f"{value}%" if value is not None
-                    else "не готово (нет ключа Text.ru, короткий текст или проверка ещё идёт) — попробуйте ещё раз"
-                )
-            except requests.RequestException:
-                st.session_state[f"uq_{item_id}"] = "проверка заняла слишком долго — попробуйте ещё раз"
+                res = api_post(f"/rewrite/{item_id}/uniqueness", json={"text": edited})
+                uid = (res or {}).get("uid")
+                if uid:
+                    st.session_state[f"uq_uid_{item_id}"] = uid
+                    st.session_state[f"uq_{item_id}"] = "проверяется… нажмите «🔄 Обновить уникальность»"
+                else:
+                    st.session_state[f"uq_{item_id}"] = "не проверить (нет ключа Text.ru или текст короче 100 символов)"
+                    st.session_state.pop(f"uq_uid_{item_id}", None)
+            except requests.RequestException as e:
+                st.error(f"Не удалось запустить проверку: {e}")
         st.rerun()
 
     factcheck = st.session_state.get(f"fc_{item_id}")
@@ -426,6 +428,20 @@ def _detail_rewrite(item):
     uniqueness = st.session_state.get(f"uq_{item_id}")
     if uniqueness:
         st.caption(f"Уникальность: {uniqueness}")
+    if st.session_state.get(f"uq_uid_{item_id}"):
+        if st.button("🔄 Обновить уникальность"):
+            with st.spinner("Проверяю готовность…"):
+                try:
+                    res = api_get(f"/rewrite/{item_id}/uniqueness/{st.session_state[f'uq_uid_{item_id}']}")
+                    if res and res.get("ready"):
+                        value = res.get("uniqueness")
+                        st.session_state[f"uq_{item_id}"] = f"{value}%" if value is not None else "проверка не удалась"
+                        st.session_state.pop(f"uq_uid_{item_id}", None)
+                    else:
+                        st.session_state[f"uq_{item_id}"] = "ещё считается — обновите через несколько секунд"
+                except requests.RequestException as e:
+                    st.error(f"Не удалось получить результат: {e}")
+            st.rerun()
 
     # 5. Готовый текст для публикации — с кнопкой копирования (появляется при наведении).
     if edited.strip():
