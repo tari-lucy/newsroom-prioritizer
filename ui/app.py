@@ -411,10 +411,11 @@ def _detail_rewrite(item):
                 value = (res or {}).get("uniqueness")
                 st.session_state[f"uq_{item_id}"] = (
                     f"{value}%" if value is not None
-                    else "не проверить (нет ключа Text.ru, текст короткий или не успела)"
+                    else "не готово (нет ключа Text.ru, короткий текст или проверка ещё идёт) — попробуйте ещё раз"
                 )
-            except requests.RequestException as e:
-                st.error(f"Проверка уникальности не удалась: {e}")
+            except requests.RequestException:
+                st.session_state[f"uq_{item_id}"] = "проверка заняла слишком долго — попробуйте ещё раз"
+        st.rerun()
 
     factcheck = st.session_state.get(f"fc_{item_id}")
     if factcheck:
