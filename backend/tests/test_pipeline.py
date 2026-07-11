@@ -17,11 +17,10 @@ def test_feed_filters_and_sorting(ingested):
     assert "Погода в Москве" not in titles
     assert len(feed) == 2
 
-    # Сортировка по убыванию вероятности.
-    probas = [item["score_proba"] for item in feed]
-    assert probas == sorted(probas, reverse=True)
+    # Свежие сверху: даты публикации убывают.
+    dates = [item["published_at"] for item in feed]
+    assert dates == sorted(dates, reverse=True)
 
-    # Инфоповод про атаку получает высокий приоритет и гео-термин.
+    # Самый свежий — про атаку на Севастополь (гео-термин на месте).
     top = feed[0]
-    assert top["score_class"] == "высокая"
     assert "севастопол" in top["matched_terms"]

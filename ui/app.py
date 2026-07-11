@@ -113,7 +113,7 @@ def page_feed():
     st.caption("Свежие сверху, внутри дня — по потенциалу «залететь». Только релевантные региону.")
 
     try:
-        items = api_get("/feed", limit=300)
+        items = api_get("/feed", limit=100)
     except requests.RequestException as e:
         st.error(f"Не удалось получить ленту: {e}")
         return
@@ -129,7 +129,17 @@ def page_feed():
     if not filtered:
         st.info("Под выбранные фильтры ничего не подошло.")
         return
-    for item in filtered:
+
+    # Пагинация: рисуем ограниченное число карточек за раз — иначе Streamlit подвисает.
+    page_size = 20
+    total = len(filtered)
+    pages = (total + page_size - 1) // page_size
+    page = 1
+    if pages > 1:
+        page = st.number_input(f"Страница (всего {pages})", min_value=1, max_value=pages, value=1, step=1)
+    start = (page - 1) * page_size
+    st.caption(f"Показаны {start + 1}–{min(start + page_size, total)} из {total}")
+    for item in filtered[start:start + page_size]:
         _render_card(item)
 
 
