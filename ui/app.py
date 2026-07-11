@@ -18,7 +18,18 @@ COOKIE_PASSWORD = os.environ.get("COOKIE_PASSWORD", "newsroom-cookie-key")
 POTENTIAL_ICON = {"высокая": "🔥", "средняя": "🌤️", "низкая": "💤"}
 # Тёплый→холодный акцент по классу (интуитивно: горячее = выше шанс).
 POTENTIAL_COLOR = {"высокая": "#e8590c", "средняя": "#f59f00", "низкая": "#868e96"}
+# Порог класса по шансу «залететь» (вероятность высокого класса). Правится тут.
+POTENTIAL_THRESHOLDS = [(0.60, "высокая"), (0.30, "средняя")]
 SOURCE_TYPES = ["rss", "telegram", "vk"]
+
+
+def potential(proba):
+    """Класс инфоповода по шансу залететь: понятный порог, а не решение модели argmax."""
+    if proba is not None:
+        for threshold, name in POTENTIAL_THRESHOLDS:
+            if proba >= threshold:
+                return name
+    return "низкая"
 
 
 CUSTOM_CSS = """
@@ -170,7 +181,7 @@ def _feed_filters(items):
     for item in items:
         if q and q not in f"{item.get('title', '')} {item.get('body') or ''}".lower():
             continue
-        if classes and item.get("score_class") not in classes:
+        if classes and potential(item.get("score_proba")) not in classes:
             continue
         if source != "Все источники" and item.get("source_name") != source:
             continue
@@ -181,7 +192,7 @@ def _feed_filters(items):
 
 
 def _feed_counters(items):
-    counts = Counter(i.get("score_class") for i in items)
+    counts = Counter(potential(i.get("score_proba")) for i in items)
     cols = st.columns(4)
     cols[0].metric("Всего", len(items))
     cols[1].metric("🔥 Высокие", counts.get("высокая", 0))
@@ -190,7 +201,7 @@ def _feed_counters(items):
 
 
 def _render_card(item):
-    cls = item.get("score_class") or ""
+    cls = potential(item.get("score_proba"))
     color = POTENTIAL_COLOR.get(cls, "#868e96")
     with st.container(border=True):
         score_col, main_col = st.columns([1, 7])
