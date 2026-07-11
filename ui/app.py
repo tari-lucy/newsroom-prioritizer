@@ -12,13 +12,24 @@ from streamlit_cookies_manager import EncryptedCookieManager
 API_URL = os.environ.get("API_URL", "http://api:8000")
 COOKIE_PASSWORD = os.environ.get("COOKIE_PASSWORD", "newsroom-cookie-key")
 
-# Цветовая индикация класса приоритета.
-CLASS_BADGE = {
-    "высокая": "🔴 высокая",
-    "средняя": "🟡 средняя",
-    "низкая": "⚪ низкая",
-}
+# Индикатор потенциала: огонёк = «может зайти», ниже — прохладнее.
+POTENTIAL_ICON = {"высокая": "🔥", "средняя": "🌤️", "низкая": "💤"}
 SOURCE_TYPES = ["rss", "telegram", "vk"]
+
+# Основы гео-терминов из region.yml → читаемые названия для карточки.
+REGION_NAMES = {
+    "севастопол": "Севастополь", "крым": "Крым", "симферопол": "Симферополь",
+    "ялт": "Ялта", "керч": "Керчь", "балаклав": "Балаклава", "евпатор": "Евпатория",
+    "феодос": "Феодосия", "бахчисара": "Бахчисарай", "джанко": "Джанкой",
+    "алушт": "Алушта", "саки": "Саки", "черноморск": "Черноморское",
+    "инкерман": "Инкерман", "гурзуф": "Гурзуф", "форос": "Форос",
+    "херсонес": "Херсонес", "развожаев": "Развожаев", "аксёнов": "Аксёнов",
+}
+
+
+def region_label(terms):
+    names = [REGION_NAMES.get(t, t.capitalize()) for t in (terms or [])]
+    return ", ".join(dict.fromkeys(names))
 
 
 # --- Обёртки над API: подстановка токена и единая обработка ошибок сети ---
@@ -84,7 +95,7 @@ def render_login():
 
 def page_feed():
     st.subheader("Лента инфоповодов")
-    st.caption("Отсортировано по вероятности «залетит». Показаны только релевантные региону.")
+    st.caption("Свежие сверху, внутри дня — по потенциалу «залететь». Показаны только релевантные региону.")
 
     try:
         items = api_get("/feed", limit=100)
@@ -98,40 +109,53 @@ def page_feed():
 
     for item in items:
         with st.container(border=True):
-            left, right = st.columns([1, 6])
-            with left:
+            score_col, main_col = st.columns([1, 7])
+
+            with score_col:
+                cls = item.get("score_class") or ""
                 proba = item.get("score_proba")
-                st.metric("P(залетит)", f"{proba:.0%}" if proba is not None else "—")
-                st.write(CLASS_BADGE.get(item.get("score_class"), item.get("score_class") or ""))
-            with right:
-                st.markdown(f"**[{item['title']}]({item['url']})**")
-                meta = " · ".join(
-                    part for part in [
-                        item.get("source_name"),
-                        (item.get("published_at") or "")[:10] or None,
-                    ] if part
+                chance = f"{proba:.0%}" if proba is not None else "—"
+                st.markdown(
+                    f"<div style='text-align:center'>"
+                    f"<div style='font-size:2.4rem;line-height:1.1'>{POTENTIAL_ICON.get(cls, '')}</div>"
+                    f"<div style='font-weight:600'>{cls}</div>"
+                    f"<div style='color:gray;font-size:0.85rem'>шанс {chance}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
                 )
-                if meta:
-                    st.caption(meta)
-                terms = item.get("matched_terms") or []
-                if terms:
-                    st.caption("🗺 регион: " + ", ".join(terms))
+
+            with main_col:
+                st.markdown(f"##### [{item['title']}]({item['url']})")
+                meta = " · ".join(p for p in [
+                    item.get("source_name"),
+                    (item.get("published_at") or "")[:10] or None,
+                ] if p)
+                region = region_label(item.get("matched_terms"))
+                caption = meta + (f"  ·  📍 {region}" if region else "")
+                if caption:
+                    st.caption(caption)
+
                 body = item.get("body") or ""
                 if body:
-                    preview = body[:300] + ("…" if len(body) > 300 else "")
-                    st.write(preview)
+                    st.write(body[:280] + ("…" if len(body) > 280 else ""))
+                    if len(body) > 280:
+                        with st.expander("📄 Полный текст"):
+                            st.write(body)
 
-                _feedback_control(item)
                 _rewrite_control(item["id"])
+                _feedback_control(item)
 
 
 def _feedback_control(item):
-    """Кнопки 👍/👎. Текущая оценка приходит вместе с лентой и подсвечивается галочкой."""
+    """Оценка редактора (👍/👎). Копится как сигнал для дообучения модели."""
     verdict = item.get("feedback")
-    cols = st.columns([1, 1, 8])
-    if cols[0].button("👍" + (" ✓" if verdict == "like" else ""), key=f"like_{item['id']}"):
+    st.caption("Оценка редактора — пригодится для дообучения модели:")
+    cols = st.columns([2, 2, 6])
+    like = ("✅ " if verdict == "like" else "") + "👍 Стоящий"
+    dislike = ("✅ " if verdict == "dislike" else "") + "👎 Мимо"
+    if cols[0].button(like, key=f"like_{item['id']}"):
         _send_feedback(item["id"], "like")
-    if cols[1].button("👎" + (" ✓" if verdict == "dislike" else ""), key=f"dislike_{item['id']}"):
+    if cols[1].button(dislike, key=f"dislike_{item['id']}"):
         _send_feedback(item["id"], "dislike")
 
 

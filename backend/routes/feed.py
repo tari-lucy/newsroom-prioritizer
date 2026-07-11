@@ -1,26 +1,37 @@
-"""API ленты редактора: инфоповоды, прошедшие фильтры, по убыванию вероятности «залетит»."""
+"""API ленты редактора: свежие инфоповоды сверху, внутри — по вероятности «залетит».
+
+Показываем только инфоповоды от существующих и включённых источников: если ленту удалили
+или выключили, её новости из ленты сервиса пропадают (не мешают редактору).
+"""
 from fastapi import APIRouter, Depends
-from sqlmodel import Session
+from sqlalchemy import nulls_last
+from sqlmodel import Session, select
 
 from database.database import get_session
-from models.item import ItemStatus
+from models.item import Item, ItemStatus
+from models.source import Source
 from schemas.item import ItemRead
 from services.crud.feedback import get_feedback_for_item
-from services.crud.item import list_items
 
 feed_router = APIRouter(prefix="/feed", tags=["Лента"])
 
 
 @feed_router.get("", response_model=list[ItemRead])
 def get_feed(limit: int = 100, session: Session = Depends(get_session)):
-    """Показанные редактору инфоповоды: релевантные региону, оценённые, сорт по вероятности."""
-    items = list_items(
-        session,
-        status=ItemStatus.SCORED.value,
-        region_relevant=True,
-        order_by_score=True,
-        limit=limit,
+    """Релевантные региону, оценённые инфоповоды активных источников: сорт по дате, затем по вероятности."""
+    stmt = (
+        select(Item)
+        .join(Source, Item.source_id == Source.id)   # только существующие источники
+        .where(
+            Item.status == ItemStatus.SCORED.value,
+            Item.region_relevant.is_(True),
+            Source.active.is_(True),                  # и только включённые
+        )
+        .order_by(nulls_last(Item.published_at.desc()), Item.score_proba.desc())
+        .limit(limit)
     )
+    items = list(session.exec(stmt))
+
     # Разворачиваем имя источника и текущую оценку из связей — для отображения в карточке.
     result = []
     for i in items:
