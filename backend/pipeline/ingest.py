@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 
 from database.config import get_settings
 from models.item import Item, ItemStatus
+from models.source import SourceType
 from pipeline.connectors import get_connector
 from pipeline.dedup import best_match
 from pipeline.fulltext import fetch_fulltext
@@ -69,8 +70,8 @@ def run_ingest(session: Session) -> dict:
                 summary["out_of_region"] += 1
                 continue
 
-            # Дотягиваем полный текст статьи (RSS даёт только анонс); при неудаче остаётся анонс.
-            if settings.FETCH_FULLTEXT:
+            # Полный текст дотягиваем ТОЛЬКО для RSS (там анонсы); VK и др. уже отдают полный текст.
+            if settings.FETCH_FULLTEXT and source.type == SourceType.RSS.value:
                 full_text = fetch_fulltext(raw.url)
                 if full_text:
                     item.body = full_text

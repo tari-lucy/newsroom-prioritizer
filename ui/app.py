@@ -548,7 +548,7 @@ with st.sidebar:
     if st.button("🔄 Запустить сбор", use_container_width=True):
         with st.spinner("Идёт сбор инфоповодов…"):
             try:
-                summary = api_post("/ingest")
+                summary = api_post("/ingest", timeout=300)
                 st.success(
                     f"Собрано: {summary['fetched']} · новых: {summary['new']} · "
                     f"дублей: {summary['duplicates']} · вне региона: {summary['out_of_region']}"
