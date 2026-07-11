@@ -77,8 +77,8 @@ def api_get(path: str, **params):
     return resp.json()
 
 
-def api_post(path: str, **kwargs):
-    resp = requests.post(f"{API_URL}{path}", headers=_headers(), timeout=60, **kwargs)
+def api_post(path: str, timeout: int = 60, **kwargs):
+    resp = requests.post(f"{API_URL}{path}", headers=_headers(), timeout=timeout, **kwargs)
     resp.raise_for_status()
     return resp.json() if resp.content else None
 
@@ -328,7 +328,7 @@ def _detail_rewrite(item):
             return
         with st.spinner("Дорабатываю…"):
             try:
-                res = api_post(f"/rewrite/{item_id}/refine", json={"text": current, "instruction": instruction})
+                res = api_post(f"/rewrite/{item_id}/refine", json={"text": current, "instruction": instruction}, timeout=300)
                 st.session_state[work_key] = (res or {}).get("text", current)
                 st.rerun()
             except requests.RequestException as e:
@@ -400,14 +400,14 @@ def _detail_rewrite(item):
     if checks[0].button("🔍 Проверить факты"):
         with st.spinner("Сверяю с первоисточником…"):
             try:
-                res = api_post(f"/rewrite/{item_id}/factcheck", json={"text": edited})
+                res = api_post(f"/rewrite/{item_id}/factcheck", json={"text": edited}, timeout=300)
                 st.session_state[f"fc_{item_id}"] = (res or {}).get("factcheck") or "Фактчек недоступен без ключа LLM."
             except requests.RequestException as e:
                 st.error(f"Фактчек не удался: {e}")
     if checks[1].button("📊 Проверить уникальность (до минуты)"):
         with st.spinner("Проверяю уникальность в Text.ru…"):
             try:
-                res = api_post(f"/rewrite/{item_id}/uniqueness", json={"text": edited})
+                res = api_post(f"/rewrite/{item_id}/uniqueness", json={"text": edited}, timeout=90)
                 value = (res or {}).get("uniqueness")
                 st.session_state[f"uq_{item_id}"] = (
                     f"{value}%" if value is not None
