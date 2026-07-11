@@ -364,7 +364,7 @@ def page_sources():
 
 # --- Компоновка ---
 
-st.set_page_config(page_title="Newsroom Prioritizer", page_icon="📰", layout="wide")
+st.set_page_config(page_title="Редакционный радар", page_icon="📡", layout="wide")
 
 # Cookie-менеджер: ДОЖИДАЕМСЯ загрузки cookie из браузера (ready), иначе вход не переживёт F5.
 cookies = EncryptedCookieManager(prefix="newsroom/", password=COOKIE_PASSWORD)
@@ -372,7 +372,14 @@ if not cookies.ready():
     st.stop()
 
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-st.title("📰 Newsroom Prioritizer")
+st.markdown(
+    "<div style='padding:0.2rem 0 0.8rem 0'>"
+    "<div style='font-size:2.1rem;font-weight:800;letter-spacing:-0.5px'>📡 Редакционный радар</div>"
+    "<div style='color:gray;font-size:1rem;margin-top:-2px'>"
+    "Приоритизация инфоповодов Севастополя и Крыма — что стоит взять в работу</div>"
+    "</div>",
+    unsafe_allow_html=True,
+)
 
 # Восстанавливаем вход из cookie (переживает перезагрузку страницы F5).
 if "token" not in st.session_state:
