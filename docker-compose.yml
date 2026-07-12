@@ -48,7 +48,8 @@ services:
     restart: unless-stopped
     env_file: ./.env
     ports:
-      - "${WEBVIEW_PORT:-8501}:8501"
+      # WEBVIEW_HOST=127.0.0.1 прячет витрину за reverse-proxy (наружу — только через домен/HTTPS).
+      - "${WEBVIEW_HOST:-0.0.0.0}:${WEBVIEW_PORT:-8501}:8501"
     volumes:
       - ./ui:/app
     depends_on:
