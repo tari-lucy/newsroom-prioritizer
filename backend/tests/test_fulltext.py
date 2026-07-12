@@ -20,8 +20,22 @@ class _Resp:
         self.content = content
 
 
+class _Scraper:
+    """Заглушка скрапера: get() возвращает заранее заданный ответ или бросает исключение."""
+    def __init__(self, handler):
+        self._handler = handler
+
+    def get(self, url, timeout=20):
+        return self._handler(url, timeout)
+
+
+def _patch_scraper(monkeypatch, handler):
+    # Скрапер теперь thread-local (создаётся через _get_scraper) — мокаем фабрику.
+    monkeypatch.setattr(fulltext, "_get_scraper", lambda: _Scraper(handler))
+
+
 def test_extracts_main_text(monkeypatch):
-    monkeypatch.setattr(fulltext._scraper, "get", lambda url, timeout=20: _Resp(200, SAMPLE_HTML))
+    _patch_scraper(monkeypatch, lambda url, timeout: _Resp(200, SAMPLE_HTML))
     text = fulltext.fetch_fulltext("http://example/news/1")
     assert text is not None
     assert "складской ангар" in text
@@ -30,13 +44,13 @@ def test_extracts_main_text(monkeypatch):
 
 
 def test_returns_none_on_error(monkeypatch):
-    def _boom(url, timeout=20):
+    def _boom(url, timeout):
         raise ConnectionError("network down")
 
-    monkeypatch.setattr(fulltext._scraper, "get", _boom)
+    _patch_scraper(monkeypatch, _boom)
     assert fulltext.fetch_fulltext("http://example/news/1") is None
 
 
 def test_returns_none_on_bad_status(monkeypatch):
-    monkeypatch.setattr(fulltext._scraper, "get", lambda url, timeout=20: _Resp(403, b""))
+    _patch_scraper(monkeypatch, lambda url, timeout: _Resp(403, b""))
     assert fulltext.fetch_fulltext("http://example/news/1") is None

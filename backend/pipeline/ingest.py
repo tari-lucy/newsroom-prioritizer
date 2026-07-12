@@ -4,6 +4,7 @@
 и дубли, а прошедшим ставит оценку приоритизатора. Вызывается из API (/ingest) и шедулера.
 """
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
 from sqlmodel import Session, select
@@ -39,6 +40,9 @@ def run_ingest(session: Session) -> dict:
 
     scorer = get_scorer()
 
+    # 1. Опрашиваем источники, отсекаем уже собранное (url) и чужой регион.
+    #    Релевантные кандидаты откладываем — для них следом параллельно дотянем полный текст.
+    to_process: list[tuple] = []   # (source, raw, item) — прошедшие гео-фильтр новинки
     for source in list_sources(session, active_only=True):
         connector = get_connector(source.type)
         if connector is None:
@@ -70,36 +74,48 @@ def run_ingest(session: Session) -> dict:
                 summary["out_of_region"] += 1
                 continue
 
-            # Полный текст дотягиваем ТОЛЬКО для RSS (там анонсы); VK и др. уже отдают полный текст.
-            if settings.FETCH_FULLTEXT and source.type == SourceType.RSS.value:
-                full_text = fetch_fulltext(raw.url)
-                if full_text:
-                    item.body = full_text
+            to_process.append((source, raw, item))
 
-            # Дедуп и скоринг — уже на полном тексте (если он получен).
-            text = f"{raw.title} {item.body}"
-            idx, sim = best_match(text, canon_texts)
-            if sim >= settings.DEDUP_THRESHOLD:
-                item.status = ItemStatus.DUPLICATE.value
-                item.dedup_group = canon_groups[idx]
-                create_item(item, session)
-                summary["duplicates"] += 1
-                continue
+    # 2. Полный текст дотягиваем ТОЛЬКО для RSS (анонсы); VK/Telegram отдают текст сразу.
+    #    Загрузки идут параллельно с ограниченным таймаутом, чтобы всплеск новинок не растягивал
+    #    цикл (при коротком интервале сбора это критично).
+    if settings.FETCH_FULLTEXT:
+        rss_items = [item for source, raw, item in to_process
+                     if source.type == SourceType.RSS.value]
+        if rss_items:
+            with ThreadPoolExecutor(max_workers=settings.FULLTEXT_WORKERS) as pool:
+                futures = {pool.submit(fetch_fulltext, item.url, settings.FULLTEXT_TIMEOUT): item
+                           for item in rss_items}
+                for future in as_completed(futures):
+                    full_text = future.result()
+                    if full_text:
+                        futures[future].body = full_text
 
-            # Новый инфоповод: скорим и показываем редактору.
-            result = scorer.score(raw.title, item.body)
-            item.score_proba = result["proba"]
-            item.score_class = result["cls"]
-            item.status = ItemStatus.SCORED.value
-            item = create_item(item, session)
-            # dedup_group каноничной записи = её собственный id (дубли будут ссылаться на него).
-            item.dedup_group = f"grp-{item.id}"
-            save_item(item, session)
+    # 3. Дедуп и скоринг — последовательно, уже на готовом тексте.
+    for source, raw, item in to_process:
+        text = f"{raw.title} {item.body}"
+        idx, sim = best_match(text, canon_texts)
+        if sim >= settings.DEDUP_THRESHOLD:
+            item.status = ItemStatus.DUPLICATE.value
+            item.dedup_group = canon_groups[idx]
+            create_item(item, session)
+            summary["duplicates"] += 1
+            continue
 
-            # Пополняем кандидатов, чтобы ловить дубли и внутри одного прогона.
-            canon_texts.append(text)
-            canon_groups.append(item.dedup_group)
-            summary["new"] += 1
+        # Новый инфоповод: скорим и показываем редактору.
+        result = scorer.score(raw.title, item.body)
+        item.score_proba = result["proba"]
+        item.score_class = result["cls"]
+        item.status = ItemStatus.SCORED.value
+        item = create_item(item, session)
+        # dedup_group каноничной записи = её собственный id (дубли будут ссылаться на него).
+        item.dedup_group = f"grp-{item.id}"
+        save_item(item, session)
+
+        # Пополняем кандидатов, чтобы ловить дубли и внутри одного прогона.
+        canon_texts.append(text)
+        canon_groups.append(item.dedup_group)
+        summary["new"] += 1
 
     logger.info("Сбор завершён: %s", summary)
     return summary
