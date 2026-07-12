@@ -71,26 +71,41 @@ def _headers():
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
+def _check_auth(resp):
+    """Истёкший/недействительный токен (401) — чистим сессию и возвращаем на экран входа,
+    чтобы редактор видел форму логина, а не сырую ошибку."""
+    if resp.status_code == 401:
+        st.session_state.pop("token", None)
+        st.session_state["session_expired"] = True
+        cookies["token"] = ""
+        cookies.save()
+        st.rerun()
+
+
 def api_get(path: str, **params):
     resp = requests.get(f"{API_URL}{path}", params=params, headers=_headers(), timeout=15)
+    _check_auth(resp)
     resp.raise_for_status()
     return resp.json()
 
 
 def api_post(path: str, timeout: int = 60, **kwargs):
     resp = requests.post(f"{API_URL}{path}", headers=_headers(), timeout=timeout, **kwargs)
+    _check_auth(resp)
     resp.raise_for_status()
     return resp.json() if resp.content else None
 
 
 def api_patch(path: str, **params):
     resp = requests.patch(f"{API_URL}{path}", params=params, headers=_headers(), timeout=15)
+    _check_auth(resp)
     resp.raise_for_status()
     return resp.json()
 
 
 def api_delete(path: str):
     resp = requests.delete(f"{API_URL}{path}", headers=_headers(), timeout=15)
+    _check_auth(resp)
     resp.raise_for_status()
 
 
@@ -111,6 +126,9 @@ def do_login(username: str, password: str):
 def render_login():
     """Экран входа. Показывается, пока редактор не авторизован."""
     st.subheader("Вход")
+    # Если сюда вернулись из-за истёкшего токена — поясняем, а не молча показываем форму.
+    if st.session_state.pop("session_expired", False):
+        st.warning("Сессия истекла — войдите заново.")
     st.info("👤 **Демо-доступ для проверки:** логин **`editor`**, пароль **`editor123`**")
     with st.form("login"):
         username = st.text_input("Логин", value="editor")

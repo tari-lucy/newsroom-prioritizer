@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # Авторизация (JWT)
     SECRET_KEY: str = "dev-secret-change-me"   # в продакшене задать в .env
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_SECONDS: int = 86400            # срок жизни токена (сутки)
+    JWT_EXPIRE_SECONDS: int = 604800           # срок жизни токена (7 дней)
     # Переопределение строки подключения (напр. sqlite для тестов). Пусто -> Postgres из DB_*.
     DATABASE_URL: str = ""
 
