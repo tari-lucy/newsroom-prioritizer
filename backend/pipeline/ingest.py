@@ -83,13 +83,20 @@ def run_ingest(session: Session) -> dict:
         rss_items = [item for source, raw, item in to_process
                      if source.type == SourceType.RSS.value]
         if rss_items:
-            with ThreadPoolExecutor(max_workers=settings.FULLTEXT_WORKERS) as pool:
-                futures = {pool.submit(fetch_fulltext, item.url, settings.FULLTEXT_TIMEOUT): item
-                           for item in rss_items}
-                for future in as_completed(futures):
+            pool = ThreadPoolExecutor(max_workers=settings.FULLTEXT_WORKERS)
+            futures = {pool.submit(fetch_fulltext, item.url, settings.FULLTEXT_TIMEOUT): item
+                       for item in rss_items}
+            # Общий потолок фазы: одна «зависшая» загрузка (сервер, игнорящий read-таймаут) не должна
+            # заблокировать весь сбор. Что не успело — останется на анонсе из RSS.
+            phase_deadline = settings.FULLTEXT_TIMEOUT * 3
+            try:
+                for future in as_completed(futures, timeout=phase_deadline):
                     full_text = future.result()
                     if full_text:
                         futures[future].body = full_text
+            except TimeoutError:
+                logger.warning("Дотяг полного текста превысил %d с — беру что успело", phase_deadline)
+            pool.shutdown(wait=False, cancel_futures=True)
 
     # 3. Дедуп и скоринг — последовательно, уже на готовом тексте.
     for source, raw, item in to_process:

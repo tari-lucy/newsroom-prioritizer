@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     DEDUP_THRESHOLD: float = 0.75
     DEDUP_WINDOW_HOURS: int = 48                # окно, в котором ищем дубли
     INGEST_INTERVAL_MINUTES: int = 5            # период автосбора шедулером (для новостей 2–5 мин)
+    INGEST_CYCLE_TIMEOUT: int = 300             # жёсткий предел на один цикл сбора, сек (защита от зависшего источника)
 
     # Приоритизатор: путь к обученной модели. Если файла нет — работает заглушка-эвристика.
     MODEL_PATH: str = "/config/virality_model.joblib"
