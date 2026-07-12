@@ -192,15 +192,22 @@ def page_feed():
             st.rerun()
 
 
+# Время публикации из источников хранится в UTC; редакция в Севастополе — показываем московское.
+# МСК = UTC+3 фиксированно (без перехода на летнее время), поэтому достаточно сдвига.
+MSK_OFFSET = timedelta(hours=3)
+
+
 def fmt_datetime(value):
-    """ISO-время публикации → «ДД.ММ.ГГГГ ЧЧ:ММ»; если источник дал только дату — без времени."""
+    """ISO-время публикации (UTC) → московское «ДД.ММ.ГГГГ ЧЧ:ММ»; если только дата — без времени."""
     if not value:
         return None
     try:
         dt = datetime.fromisoformat(value)
     except ValueError:
         return value[:10]
-    return dt.strftime("%d.%m.%Y" if len(value) <= 10 else "%d.%m.%Y %H:%M")
+    if len(value) <= 10:   # источник дал только дату, без времени — не сдвигаем
+        return dt.strftime("%d.%m.%Y")
+    return (dt + MSK_OFFSET).strftime("%d.%m.%Y %H:%M")
 
 
 def _within_period(published_at, period):
@@ -209,11 +216,12 @@ def _within_period(published_at, period):
     if not published_at:
         return False
     try:
-        published = datetime.fromisoformat(published_at).date()
+        published = (datetime.fromisoformat(published_at) + MSK_OFFSET).date()
     except ValueError:
         return False
+    today_msk = (datetime.utcnow() + MSK_OFFSET).date()
     threshold = {"сегодня": 0, "3 дня": 2, "неделя": 6}[period]
-    return published >= date.today() - timedelta(days=threshold)
+    return published >= today_msk - timedelta(days=threshold)
 
 
 def _feed_filters(items):
