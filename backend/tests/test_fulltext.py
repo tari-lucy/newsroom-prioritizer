@@ -54,3 +54,22 @@ def test_returns_none_on_error(monkeypatch):
 def test_returns_none_on_bad_status(monkeypatch):
     _patch_scraper(monkeypatch, lambda url, timeout: _Resp(403, b""))
     assert fulltext.fetch_fulltext("http://example/news/1") is None
+
+
+def test_ssl_fallback(monkeypatch):
+    """Битая цепочка сертификата (напр. sev.gov.ru) — повтор без проверки TLS, текст извлекается."""
+    import requests
+
+    class _SSLScraper:
+        calls = 0
+
+        def get(self, url, timeout=20, verify=True):
+            _SSLScraper.calls += 1
+            if verify:
+                raise requests.exceptions.SSLError("bad chain")
+            return _Resp(200, SAMPLE_HTML)
+
+    monkeypatch.setattr(fulltext, "_get_scraper", lambda: _SSLScraper())
+    text = fulltext.fetch_fulltext("https://gov/news/1")
+    assert text is not None and "складской ангар" in text
+    assert _SSLScraper.calls == 2   # первый заход упал по TLS, второй без проверки — успех

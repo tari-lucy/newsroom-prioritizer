@@ -1,3 +1,19 @@
+def test_create_item_idempotent_on_url_conflict(client):
+    """Параллельный сбор (ручной × автосбор) вставляет тот же url — не 500, а возврат существующего."""
+    from sqlmodel import Session
+
+    from database.database import engine
+    from models.item import Item
+    from services.crud.item import create_item
+
+    with Session(engine) as s:
+        first = create_item(Item(url="http://dup/1", title="A", body="a"), s)
+        first_id = first.id
+    with Session(engine) as s:
+        second = create_item(Item(url="http://dup/1", title="B", body="b"), s)
+        assert second.id == first_id   # тот же инфоповод, конфликт уникальности не уронил вставку
+
+
 def test_ingest_summary(client, monkeypatch, fake_connector):
     monkeypatch.setattr("pipeline.ingest.get_connector", lambda source_type: fake_connector())
     client.post("/sources", json={"type": "rss", "name": "НТС", "params": {}})

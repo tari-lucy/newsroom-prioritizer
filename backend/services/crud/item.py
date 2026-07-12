@@ -1,6 +1,7 @@
 """CRUD инфоповодов. Обслуживает сбор, гео-фильтр, дедуп, скоринг и ленту редактора."""
 from typing import Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from models.item import Item
@@ -8,7 +9,16 @@ from models.item import Item
 
 def create_item(item: Item, session: Session) -> Item:
     session.add(item)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # url уникален: параллельный прогон сбора (ручной × автосбор) мог вставить его первым.
+        # Откатываемся и возвращаем уже существующую запись — вставка идемпотентна, без 500.
+        session.rollback()
+        existing = get_item_by_url(item.url, session)
+        if existing is not None:
+            return existing
+        raise
     session.refresh(item)
     return item
 
