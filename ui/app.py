@@ -472,7 +472,11 @@ def page_sources():
         col_type, col_name = st.columns([1, 2])
         src_type = col_type.selectbox("Тип", SOURCE_TYPES, index=0)
         src_name = col_name.text_input("Название")
-        src_url = st.text_input("URL ленты (rss) или адрес/имя паблика (vk)", placeholder="https://site.ru/rss  или  vk.com/public_name")
+        src_url = st.text_input(
+            "Адрес источника",
+            placeholder="rss: https://site.ru/rss · vk: vk.com/public_name · telegram: t.me/channel",
+            help="Для rss — ссылка на ленту; для vk — адрес/имя паблика или страницы; для telegram — ссылка t.me/канал (публичный канал).",
+        )
         submitted = st.form_submit_button("Добавить")
         if submitted:
             if not src_name or not src_url:

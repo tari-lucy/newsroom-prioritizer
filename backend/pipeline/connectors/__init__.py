@@ -4,11 +4,13 @@ from typing import Optional
 from models.source import SourceType
 from pipeline.connectors.base import Connector, RawItem
 from pipeline.connectors.rss import RssConnector
+from pipeline.connectors.telegram import TelegramConnector
 from pipeline.connectors.vk import VkConnector
 
 # Расширение на соцсети/мессенджеры — добавлением класса и строки в реестр.
 _REGISTRY: dict[str, type[Connector]] = {
     SourceType.RSS.value: RssConnector,
+    SourceType.TELEGRAM.value: TelegramConnector,
     SourceType.VK.value: VkConnector,
 }
 
