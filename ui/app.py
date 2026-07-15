@@ -123,22 +123,61 @@ def do_login(username: str, password: str):
     cookies.save()
 
 
+def do_register(username: str, password: str):
+    """Регистрация редактора и сразу вход — чтобы не заставлять вводить пароль второй раз."""
+    resp = requests.post(
+        f"{API_URL}/auth/register",
+        json={"username": username, "password": password},
+        timeout=15,
+    )
+    if resp.status_code in (400, 422):
+        # 400 — логин занят; 422 — не прошла валидация схемы.
+        detail = resp.json().get("detail")
+        raise ValueError(detail if isinstance(detail, str) else "Проверьте логин и пароль.")
+    resp.raise_for_status()
+    do_login(username, password)
+
+
 def render_login():
-    """Экран входа. Показывается, пока редактор не авторизован."""
-    st.subheader("Вход")
+    """Экран входа и регистрации. Показывается, пока редактор не авторизован."""
     # Если сюда вернулись из-за истёкшего токена — поясняем, а не молча показываем форму.
     if st.session_state.pop("session_expired", False):
         st.warning("Сессия истекла — войдите заново.")
-    st.info("👤 **Демо-доступ для проверки:** логин **`editor`**, пароль **`editor123`**")
-    with st.form("login"):
-        username = st.text_input("Логин", value="editor")
-        password = st.text_input("Пароль", type="password")
-        if st.form_submit_button("Войти"):
-            try:
-                do_login(username, password)
-                st.rerun()
-            except requests.RequestException:
-                st.error("Неверный логин или пароль.")
+
+    tab_login, tab_register = st.tabs(["Вход", "Регистрация"])
+
+    with tab_login:
+        st.info("👤 **Демо-доступ для проверки:** логин **`editor`**, пароль **`editor123`**")
+        with st.form("login"):
+            username = st.text_input("Логин", value="editor")
+            password = st.text_input("Пароль", type="password")
+            if st.form_submit_button("Войти"):
+                try:
+                    do_login(username, password)
+                    st.rerun()
+                except requests.RequestException:
+                    st.error("Неверный логин или пароль.")
+
+    with tab_register:
+        st.caption("Новый редактор — заведите учётную запись, вход выполнится автоматически.")
+        with st.form("register"):
+            new_username = st.text_input("Логин", key="reg_username", placeholder="не короче 3 символов")
+            new_password = st.text_input("Пароль", type="password", key="reg_password",
+                                         placeholder="не короче 6 символов")
+            confirm = st.text_input("Повторите пароль", type="password", key="reg_confirm")
+            if st.form_submit_button("Зарегистрироваться"):
+                if not new_username or not new_password:
+                    st.warning("Заполните логин и пароль.")
+                elif new_password != confirm:
+                    st.error("Пароли не совпадают.")
+                else:
+                    try:
+                        do_register(new_username, new_password)
+                        st.rerun()
+                    except ValueError as e:
+                        st.error(str(e))
+                    except requests.RequestException:
+                        st.error("Сервис недоступен, попробуйте позже.")
 
 
 # --- Страница «Лента» ---
