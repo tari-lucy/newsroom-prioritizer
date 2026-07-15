@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     SEED_SOURCES: bool = True   # создавать дефолтные ленты при первом старте
     SEED_EDITOR: bool = True    # создавать демо-редактора при первом старте
 
+    # Инвайт-код регистрации: сервис публичный, но заводить редакторов должны только свои.
+    # Пусто -> регистрация открыта (удобно для локального запуска и проверки).
+    REGISTRATION_INVITE_CODE: str = ""
+
     # Авторизация (JWT)
     SECRET_KEY: str = "dev-secret-change-me"   # в продакшене задать в .env
     JWT_ALGORITHM: str = "HS256"

@@ -194,6 +194,7 @@ dvc pull -r public                 # если ставили через venv: .d
 
 | Переменная | Назначение |
 |---|---|
+| `REGISTRATION_INVITE_CODE` | код для регистрации редакторов. Пусто — регистрация открыта |
 | `REGION`, `REGION_CONFIG` | активный регион и файл гео-терминов |
 | `DEDUP_THRESHOLD` | порог косинуса для дублей |
 | `INGEST_INTERVAL_MINUTES` | период автосбора |

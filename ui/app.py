@@ -123,15 +123,23 @@ def do_login(username: str, password: str):
     cookies.save()
 
 
-def do_register(username: str, password: str):
+def invite_required() -> bool:
+    """Требует ли сервис инвайт-код: если недоступен — показываем поле на всякий случай."""
+    try:
+        return requests.get(f"{API_URL}/auth/invite-required", timeout=15).json()["required"]
+    except Exception:
+        return True
+
+
+def do_register(username: str, password: str, invite_code: str = ""):
     """Регистрация редактора и сразу вход — чтобы не заставлять вводить пароль второй раз."""
     resp = requests.post(
         f"{API_URL}/auth/register",
-        json={"username": username, "password": password},
+        json={"username": username, "password": password, "invite_code": invite_code},
         timeout=15,
     )
-    if resp.status_code in (400, 422):
-        # 400 — логин занят; 422 — не прошла валидация схемы.
+    if resp.status_code in (400, 403, 422):
+        # 400 — логин занят; 403 — неверный инвайт-код; 422 — не прошла валидация схемы.
         detail = resp.json().get("detail")
         raise ValueError(detail if isinstance(detail, str) else "Проверьте логин и пароль.")
     resp.raise_for_status()
@@ -160,19 +168,25 @@ def render_login():
 
     with tab_register:
         st.caption("Новый редактор — заведите учётную запись, вход выполнится автоматически.")
+        needs_invite = invite_required()
         with st.form("register"):
             new_username = st.text_input("Логин", key="reg_username", placeholder="не короче 3 символов")
             new_password = st.text_input("Пароль", type="password", key="reg_password",
                                          placeholder="не короче 6 символов")
             confirm = st.text_input("Повторите пароль", type="password", key="reg_confirm")
+            # Поле кода показываем, только если редакция закрыла регистрацию.
+            code = st.text_input("Инвайт-код", key="reg_invite",
+                                 help="Выдаётся администратором редакции") if needs_invite else ""
             if st.form_submit_button("Зарегистрироваться"):
                 if not new_username or not new_password:
                     st.warning("Заполните логин и пароль.")
                 elif new_password != confirm:
                     st.error("Пароли не совпадают.")
+                elif needs_invite and not code:
+                    st.warning("Введите инвайт-код.")
                 else:
                     try:
-                        do_register(new_username, new_password)
+                        do_register(new_username, new_password, code)
                         st.rerun()
                     except ValueError as e:
                         st.error(str(e))
