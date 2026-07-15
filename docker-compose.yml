@@ -95,7 +95,8 @@ services:
   # Воркер рерайта: забирает задачи из очереди и генерирует текст вне HTTP-цикла.
   worker:
     build: ./backend
-    container_name: newsroom-worker
+    # container_name намеренно не задан: иначе docker не даст масштабировать воркеры
+    # (`docker compose up -d --scale worker=3`) — имена контейнеров должны быть уникальны.
     restart: unless-stopped
     env_file: ./.env
     command: python -m worker.consumer
