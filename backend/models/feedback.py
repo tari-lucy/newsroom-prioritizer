@@ -14,6 +14,7 @@ from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from models.item import Item
+    from models.user import User
 
 
 class FeedbackVerdict(str, Enum):
@@ -27,8 +28,10 @@ class Feedback(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     item_id: int = Field(foreign_key="item.id", index=True)
-    editor_id: Optional[int] = Field(default=None, index=True)   # свяжется с авторизацией позже
+    # Редактор, поставивший оценку: берётся из JWT в роуте, поэтому оценки именные.
+    editor_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
     verdict: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     item: Optional["Item"] = Relationship(back_populates="feedbacks")
+    editor: Optional["User"] = Relationship(back_populates="feedbacks")

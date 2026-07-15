@@ -51,6 +51,92 @@
 всплеск новинок не растягивал цикл сбора (важно при коротком `INGEST_INTERVAL_MINUTES` — для
 новостей ставится 2–5 минут).
 
+## Доменная модель
+
+Пять сущностей (SQLModel → PostgreSQL). Ядро домена — **инфоповод** (`Item`): он приходит из
+**источника** (`Source`), получает оценку модели, порождает **ML-задачу рерайта** (`Rewrite`)
+и собирает **оценки редактора** (`Feedback`).
+
+```mermaid
+erDiagram
+    USER ||--o{ FEEDBACK : "ставит оценку"
+    SOURCE ||--o{ ITEM : "поставляет"
+    ITEM ||--o{ REWRITE : "ML-задача"
+    ITEM ||--o{ FEEDBACK : "получает"
+
+    USER {
+        int id PK
+        string username UK
+        string hashed_password
+        datetime created_at
+    }
+    SOURCE {
+        int id PK
+        string type "rss | vk | telegram"
+        string name
+        json params "url / паблик / канал"
+        bool active "выключается из UI"
+        datetime added_at
+    }
+    ITEM {
+        int id PK
+        int source_id FK
+        string url UK "защита от повторного сбора"
+        string title
+        text body "полный текст"
+        datetime published_at
+        datetime ingested_at
+        string dedup_group "группа дублей"
+        bool region_relevant "гео-фильтр"
+        json matched_terms "сработавшие гео-термины"
+        float score_proba "P(высокая) от модели"
+        string score_class "низкая | средняя | высокая"
+        string status "new | out_of_region | duplicate | scored"
+    }
+    REWRITE {
+        int id PK
+        int item_id FK
+        text text "результат LLM"
+        float uniqueness "% Text.ru"
+        string status "pending | processing | done | error"
+        datetime created_at
+    }
+    FEEDBACK {
+        int id PK
+        int item_id FK
+        int editor_id FK
+        string verdict "like | dislike"
+        datetime created_at
+    }
+```
+
+| Сущность | Роль в домене |
+|---|---|
+| `User` | редактор: вход по JWT; к нему привязаны его оценки |
+| `Source` | источник инфоповодов; тип задаёт коннектор, `params` — его настройки, `active` — вкл/выкл из UI |
+| `Item` | **инфоповод** — центральная сущность: текст, гео-релевантность, группа дублей, оценка модели, статус в пайплайне |
+| `Rewrite` | **ML-задача**: ставится в очередь, исполняется воркером (LLM), хранит результат, уникальность и статус |
+| `Feedback` | 👍/👎 редактора; одна оценка на пару (инфоповод, редактор) — смена мнения через upsert. Копится как обучающий сигнал |
+
+Жизненный цикл инфоповода отражён в `Item.status`:
+`new → out_of_region` (не наш регион) · `→ duplicate` (уже есть похожий) · `→ scored` (оценён, показан редактору).
+
+## REST API
+
+Документация — Swagger `/docs`, ReDoc `/redoc`. Все рабочие роутеры под JWT (`Depends(authenticate)`).
+
+| Метод | Эндпоинт | Назначение |
+|---|---|---|
+| `POST` | `/auth/register`, `/auth/login` | регистрация и вход (выдача JWT) |
+| `GET` | `/feed` | лента: оценённые моделью инфоповоды, свежие сверху |
+| `POST` | `/ingest` | запустить сбор (источники → гео → дедуп → **скоринг моделью**) |
+| `POST` `GET` `PATCH` `DELETE` | `/sources`, `/sources/{id}/active` | управление источниками из UI |
+| `POST` | `/rewrite/{item_id}` | **поставить ML-задачу рерайта в очередь** (202) |
+| `GET` | `/rewrite/{item_id}` | статус и результат ML-задачи |
+| `POST` | `/rewrite/{item_id}/refine`, `/factcheck` | доработка текста и фактчек (LLM) |
+| `POST` `GET` | `/rewrite/{item_id}/uniqueness[/{uid}]` | асинхронная проверка уникальности |
+| `POST` `GET` | `/feedback/{item_id}` | 👍/👎 редактора; `GET /feedback` — выгрузка обучающего датасета |
+
 ## Стек
 
 FastAPI, Streamlit, PostgreSQL (SQLModel), RabbitMQ (pika), nginx, Docker Compose,
