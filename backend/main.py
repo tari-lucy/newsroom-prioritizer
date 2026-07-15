@@ -71,6 +71,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Журнал обращений: кто из редакторов какими разделами пользуется и как быстро отвечает API.
+from services.logging.request_log import RequestLogMiddleware
+app.add_middleware(RequestLogMiddleware)
+
 
 # Авторизация открыта; рабочие эндпоинты доступны только с валидным токеном.
 from routes.auth import auth_router
