@@ -13,13 +13,25 @@ if TYPE_CHECKING:
 class SourceType(str, Enum):
     """Тип источника определяет, какой коннектор его читает."""
     RSS = "rss"
-    TELEGRAM = "telegram"   # задел на будущее
-    VK = "vk"               # задел на будущее
+    TELEGRAM = "telegram"
+    VK = "vk"
+
+
+class SourceCategory(str, Enum):
+    """Редакционная природа источника — не путать с type (это способ чтения).
+
+    Одно ведомство может приходить и по RSS, и через ВК, поэтому категория — отдельное поле.
+    Редактору важно отличать первоисточник от пересказа в СМИ.
+    """
+    MEDIA = "media"        # СМИ: новость уже пересказана и разошлась
+    OFFICIAL = "official"  # первоисточник: органы власти, ведомства, экстренные службы
+    OTHER = "other"        # прочее: компании, сообщества
 
 
 class Source(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     type: str = Field(default=SourceType.RSS.value, index=True)
+    category: str = Field(default=SourceCategory.MEDIA.value, index=True)
     name: str
     # Параметры коннектора в свободной форме: для rss — {"url": "..."},
     # для соцсетей/мессенджеров — идентификатор канала, ссылка на креды и т.п.

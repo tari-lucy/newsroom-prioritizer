@@ -33,6 +33,18 @@ def test_feed_filter_by_source(ingested):
     assert ingested.get("/feed", params={"source_id": 9999}).json() == []
 
 
+def test_feed_filter_by_category(ingested):
+    """Редактор отбирает первоисточники (правительство, МЧС) отдельно от пересказов в СМИ."""
+    source_id = ingested.get("/sources").json()[0]["id"]
+    # По умолчанию источник — СМИ, официальных инфоповодов нет.
+    assert len(ingested.get("/feed", params={"category": "media"}).json()) == 2
+    assert ingested.get("/feed", params={"category": "official"}).json() == []
+
+    ingested.patch(f"/sources/{source_id}/category", params={"category": "official"})
+    assert ingested.get("/feed", params={"category": "media"}).json() == []
+    assert len(ingested.get("/feed", params={"category": "official"}).json()) == 2
+
+
 def test_feed_search_by_text(ingested):
     found = ingested.get("/feed", params={"q": "дрон"}).json()
     assert [i["title"] for i in found] == ["Атака БПЛА на Севастополь"]

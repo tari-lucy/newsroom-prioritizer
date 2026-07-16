@@ -23,3 +23,25 @@ def test_source_crud(client):
 
 def test_delete_missing_source(client):
     assert client.delete("/sources/999").status_code == 404
+
+
+def test_source_category_defaults_and_changes(client):
+    # Категория по умолчанию — СМИ: большинство лент такие, официальные редактор уточнит.
+    created = client.post("/sources", json={"type": "rss", "name": "МЧС", "params": {}}).json()
+    assert created["category"] == "media"
+
+    changed = client.patch(f"/sources/{created['id']}/category", params={"category": "official"})
+    assert changed.json()["category"] == "official"
+
+    # Категория задаётся и при добавлении.
+    vk = client.post("/sources", json={
+        "type": "vk", "category": "official", "name": "Правительство", "params": {},
+    }).json()
+    assert vk["category"] == "official"
+
+
+def test_source_category_validated(client):
+    created = client.post("/sources", json={"type": "rss", "name": "Лента", "params": {}}).json()
+    # Произвольная категория не принимается — набор значений закрыт.
+    assert client.patch(f"/sources/{created['id']}/category", params={"category": "выдумка"}).status_code == 422
+    assert client.patch("/sources/999/category", params={"category": "media"}).status_code == 404

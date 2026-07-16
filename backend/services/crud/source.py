@@ -24,6 +24,18 @@ def list_sources(session: Session, active_only: bool = False) -> list[Source]:
     return list(session.exec(stmt))
 
 
+def set_source_category(source_id: int, category: str, session: Session) -> Optional[Source]:
+    """Сменить категорию (СМИ/официальный/прочее) — редактор уточняет её из интерфейса."""
+    source = session.get(Source, source_id)
+    if source is None:
+        return None
+    source.category = category
+    session.add(source)
+    session.commit()
+    session.refresh(source)
+    return source
+
+
 def set_source_active(source_id: int, active: bool, session: Session) -> Optional[Source]:
     """Включить/выключить источник — без удаления, чтобы не терять историю сбора."""
     source = session.get(Source, source_id)

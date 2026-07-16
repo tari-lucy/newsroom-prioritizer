@@ -26,6 +26,7 @@ feed_router = APIRouter(prefix="/feed", tags=["Лента"])
 def get_feed(
     limit: int = 200,
     source_id: Optional[int] = None,
+    category: Optional[str] = None,
     q: Optional[str] = None,
     min_proba: Optional[float] = None,
     max_proba: Optional[float] = None,
@@ -34,9 +35,10 @@ def get_feed(
 ):
     """Релевантные региону, оценённые инфоповоды активных источников: сорт по дате, затем по вероятности.
 
-    Необязательные фильтры: источник, подстрока в заголовке/тексте, диапазон вероятности
-    «залететь», свежесть в днях. Класс фильтруется именно диапазоном вероятности: пороги
-    классов задаёт витрина, здесь — только честное сравнение чисел.
+    Необязательные фильтры: источник, категория источника (СМИ/официальный/прочее), подстрока
+    в заголовке/тексте, диапазон вероятности «залететь», свежесть в днях. Класс фильтруется
+    именно диапазоном вероятности: пороги классов задаёт витрина, здесь — только честное
+    сравнение чисел.
     """
     # Дата публикации, а если её нет из RSS — дата сбора (чтобы свежее было сверху всегда).
     freshness = func.coalesce(Item.published_at, Item.ingested_at)
@@ -52,6 +54,8 @@ def get_feed(
 
     if source_id is not None:
         stmt = stmt.where(Item.source_id == source_id)
+    if category:
+        stmt = stmt.where(Source.category == category)   # напр. только первоисточники
     if min_proba is not None:
         stmt = stmt.where(Item.score_proba >= min_proba)
     if max_proba is not None:

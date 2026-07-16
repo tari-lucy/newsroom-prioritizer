@@ -21,6 +21,8 @@ POTENTIAL_COLOR = {"высокая": "#e8590c", "средняя": "#f59f00", "н
 # Порог класса по шансу «залететь» (вероятность высокого класса). Правится тут.
 POTENTIAL_THRESHOLDS = [(0.60, "высокая"), (0.30, "средняя")]
 SOURCE_TYPES = ["rss", "telegram", "vk"]
+# Категория источника (что он такое) — в отличие от типа (как его читать).
+SOURCE_CATEGORIES = {"media": "СМИ", "official": "Официальный", "other": "Прочее"}
 
 
 def potential(proba):
@@ -285,15 +287,20 @@ def _feed_filters() -> dict:
         all_sources = []
     names = {s["name"]: s["id"] for s in all_sources}
 
-    c = st.columns([3, 2, 2, 2])
+    c = st.columns([3, 2, 2, 2, 2])
     query = c[0].text_input("Поиск", placeholder="заголовок или текст")
     cls = c[1].selectbox("Класс", ["любой", "высокая", "средняя", "низкая"])
-    source = c[2].selectbox("Источник", ["Все источники", *sorted(names)])
-    period = c[3].selectbox("Период", ["всё время", "24 часа", "3 дня", "неделя"])
+    kind = c[2].selectbox("Тип источника", ["все", *SOURCE_CATEGORIES.values()],
+                          help="Официальные — первоисточники (правительство, МЧС, прокуратура); "
+                               "СМИ — уже пересказанные новости")
+    source = c[3].selectbox("Источник", ["Все источники", *sorted(names)])
+    period = c[4].selectbox("Период", ["всё время", "24 часа", "3 дня", "неделя"])
 
     params = {"limit": 200}
     if query.strip():
         params["q"] = query.strip()
+    if kind != "все":
+        params["category"] = next(k for k, v in SOURCE_CATEGORIES.items() if v == kind)
     if cls != "любой":
         # Класс — это порог по вероятности (см. potential): передаём границы, а не имя класса,
         # иначе фильтр расходился бы со значком на карточке.
@@ -556,8 +563,10 @@ def page_sources():
 
     with st.form("add_source", clear_on_submit=True):
         st.markdown("**Добавить источник**")
-        col_type, col_name = st.columns([1, 2])
-        src_type = col_type.selectbox("Тип", SOURCE_TYPES, index=0)
+        col_type, col_cat, col_name = st.columns([1, 1, 2])
+        src_type = col_type.selectbox("Тип", SOURCE_TYPES, index=0, help="Как читать источник")
+        src_category = col_cat.selectbox("Категория", list(SOURCE_CATEGORIES.values()),
+                                         help="Официальный — первоисточник (правительство, МЧС); СМИ — пересказ")
         src_name = col_name.text_input("Название")
         src_url = st.text_input(
             "Адрес источника",
@@ -572,6 +581,7 @@ def page_sources():
                 try:
                     api_post("/sources", json={
                         "type": src_type,
+                        "category": next(k for k, v in SOURCE_CATEGORIES.items() if v == src_category),
                         "name": src_name,
                         "params": {"url": src_url},
                     })
@@ -587,21 +597,33 @@ def page_sources():
         return
 
     st.markdown("**Список источников**")
+    st.caption("Категорию можно уточнить прямо в списке — по ней работает фильтр в ленте.")
+    labels = list(SOURCE_CATEGORIES.values())
     for src in sources:
-        cols = st.columns([3, 1, 2, 1, 1])
+        cols = st.columns([3, 1, 2, 2, 1, 1])
         cols[0].write(f"**{src['name']}**")
         cols[1].write(src["type"])
         cols[2].caption(src.get("params", {}).get("url", ""))
+        # Категория — редактируемая: сервис не может угадать, СМИ это или ведомство.
+        current = SOURCE_CATEGORIES.get(src.get("category", "media"), "СМИ")
+        chosen = cols[3].selectbox(
+            "Категория", labels, index=labels.index(current),
+            key=f"cat_{src['id']}", label_visibility="collapsed",
+        )
+        if chosen != current:
+            api_patch(f"/sources/{src['id']}/category",
+                      category=next(k for k, v in SOURCE_CATEGORIES.items() if v == chosen))
+            st.rerun()
         # Переключатель активности.
         if src["active"]:
-            if cols[3].button("Выкл", key=f"off_{src['id']}"):
+            if cols[4].button("Выкл", key=f"off_{src['id']}"):
                 api_patch(f"/sources/{src['id']}/active", active=False)
                 st.rerun()
         else:
-            if cols[3].button("Вкл", key=f"on_{src['id']}"):
+            if cols[4].button("Вкл", key=f"on_{src['id']}"):
                 api_patch(f"/sources/{src['id']}/active", active=True)
                 st.rerun()
-        if cols[4].button("Удалить", key=f"del_{src['id']}"):
+        if cols[5].button("Удалить", key=f"del_{src['id']}"):
             api_delete(f"/sources/{src['id']}")
             st.rerun()
 
