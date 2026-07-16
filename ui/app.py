@@ -2,7 +2,7 @@
 import os
 import time
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 import streamlit as st
 # streamlit-cookies-manager использует устаревший st.cache — подменяем на актуальный.
@@ -30,6 +30,19 @@ def potential(proba):
             if proba >= threshold:
                 return name
     return "низкая"
+
+
+def _proba_bounds(cls_name):
+    """Границы вероятности для класса — из тех же порогов, по которым рисуется значок.
+
+    Возвращает (нижняя, верхняя); None — граница отсутствует. Нужны, чтобы фильтр по классу
+    считался на сервере ровно так же, как класс показывается на карточке.
+    """
+    for idx, (threshold, name) in enumerate(POTENTIAL_THRESHOLDS):
+        if name == cls_name:
+            upper = POTENTIAL_THRESHOLDS[idx - 1][0] if idx > 0 else None
+            return threshold, upper
+    return None, POTENTIAL_THRESHOLDS[-1][0]   # низший класс — всё ниже последнего порога
 
 
 def format_paragraphs(text):
@@ -200,22 +213,19 @@ def page_feed():
     st.subheader("Лента инфоповодов")
     st.caption("Свежие сверху, внутри дня — по потенциалу «залететь». Только релевантные региону.")
 
+    params = _feed_filters()
     try:
-        items = api_get("/feed", limit=100)
+        filtered = api_get("/feed", **params)
     except requests.RequestException as e:
         st.error(f"Не удалось получить ленту: {e}")
         return
 
-    if not items:
-        st.info("Лента пуста. Нажмите «Запустить сбор» в боковой панели, чтобы собрать инфоповоды.")
-        return
-
-    filtered = _feed_filters(items)
     _feed_counters(filtered)
     st.divider()
 
     if not filtered:
-        st.info("Под выбранные фильтры ничего не подошло.")
+        st.info("Под выбранные фильтры ничего не подошло. Если фильтры не заданы — нажмите "
+                "«Запустить сбор» в боковой панели.")
         return
 
     # Пагинация: рисуем ограниченное число карточек за раз — иначе Streamlit подвисает.
@@ -263,42 +273,40 @@ def fmt_datetime(value):
     return (dt + MSK_OFFSET).strftime("%d.%m.%Y %H:%M")
 
 
-def _within_period(published_at, period):
-    if period == "всё время":
-        return True
-    if not published_at:
-        return False
+def _feed_filters() -> dict:
+    """Панель фильтров сверху; возвращает параметры запроса к /feed.
+
+    Источники берём из справочника, а не из загруженных инфоповодов: иначе редко пишущий
+    источник пропадал бы из списка, как только его новости вытеснят из ленты свежие.
+    """
     try:
-        published = (datetime.fromisoformat(published_at) + MSK_OFFSET).date()
-    except ValueError:
-        return False
-    today_msk = (datetime.utcnow() + MSK_OFFSET).date()
-    threshold = {"сегодня": 0, "3 дня": 2, "неделя": 6}[period]
-    return published >= today_msk - timedelta(days=threshold)
+        all_sources = api_get("/sources", active_only=True)
+    except requests.RequestException:
+        all_sources = []
+    names = {s["name"]: s["id"] for s in all_sources}
 
-
-def _feed_filters(items):
-    """Панель фильтров сверху; возвращает отфильтрованный список инфоповодов."""
     c = st.columns([3, 2, 2, 2])
     query = c[0].text_input("Поиск", placeholder="заголовок или текст")
-    classes = c[1].multiselect("Класс", ["высокая", "средняя", "низкая"], placeholder="любой")
-    sources = sorted({i.get("source_name") for i in items if i.get("source_name")})
-    source = c[2].selectbox("Источник", ["Все источники", *sources])
-    period = c[3].selectbox("Период", ["всё время", "сегодня", "3 дня", "неделя"])
+    cls = c[1].selectbox("Класс", ["любой", "высокая", "средняя", "низкая"])
+    source = c[2].selectbox("Источник", ["Все источники", *sorted(names)])
+    period = c[3].selectbox("Период", ["всё время", "24 часа", "3 дня", "неделя"])
 
-    q = query.strip().lower()
-    result = []
-    for item in items:
-        if q and q not in f"{item.get('title', '')} {item.get('body') or ''}".lower():
-            continue
-        if classes and potential(item.get("score_proba")) not in classes:
-            continue
-        if source != "Все источники" and item.get("source_name") != source:
-            continue
-        if not _within_period(item.get("published_at"), period):
-            continue
-        result.append(item)
-    return result
+    params = {"limit": 200}
+    if query.strip():
+        params["q"] = query.strip()
+    if cls != "любой":
+        # Класс — это порог по вероятности (см. potential): передаём границы, а не имя класса,
+        # иначе фильтр расходился бы со значком на карточке.
+        low, high = _proba_bounds(cls)
+        if low is not None:
+            params["min_proba"] = low
+        if high is not None:
+            params["max_proba"] = high
+    if source != "Все источники":
+        params["source_id"] = names[source]
+    if period != "всё время":
+        params["days"] = {"24 часа": 1, "3 дня": 3, "неделя": 7}[period]
+    return params
 
 
 def _feed_counters(items):

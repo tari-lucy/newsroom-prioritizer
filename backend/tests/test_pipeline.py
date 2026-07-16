@@ -25,6 +25,36 @@ def test_ingest_summary(client, monkeypatch, fake_connector):
     assert summary["new"] == 2
 
 
+def test_feed_filter_by_source(ingested):
+    """Отбор по источнику считается в БД, а не по загруженной странице ленты."""
+    source_id = ingested.get("/sources").json()[0]["id"]
+    assert len(ingested.get("/feed", params={"source_id": source_id}).json()) == 2
+    # Несуществующий источник — пустая лента, а не вся подряд.
+    assert ingested.get("/feed", params={"source_id": 9999}).json() == []
+
+
+def test_feed_search_by_text(ingested):
+    found = ingested.get("/feed", params={"q": "дрон"}).json()
+    assert [i["title"] for i in found] == ["Атака БПЛА на Севастополь"]
+    assert ingested.get("/feed", params={"q": "такого-текста-нет"}).json() == []
+
+
+def test_feed_filter_by_proba_range(ingested):
+    feed = ingested.get("/feed").json()
+    probas = sorted(i["score_proba"] for i in feed)
+    # Верхняя граница строгая, нижняя — нет: диапазоны классов стыкуются без дыр и пересечений.
+    low = ingested.get("/feed", params={"max_proba": probas[-1]}).json()
+    assert all(i["score_proba"] < probas[-1] for i in low)
+    high = ingested.get("/feed", params={"min_proba": probas[-1]}).json()
+    assert all(i["score_proba"] >= probas[-1] for i in high)
+
+
+def test_feed_filter_by_days(ingested):
+    # Инфоповоды из фикстуры опубликованы в 2026 году — за последние сутки их нет.
+    assert ingested.get("/feed", params={"days": 1}).json() == []
+    assert len(ingested.get("/feed", params={"days": 36500}).json()) == 2
+
+
 def test_feed_filters_and_sorting(ingested):
     feed = ingested.get("/feed").json()
     titles = [item["title"] for item in feed]
